@@ -37,7 +37,7 @@ class BiorxivSpider(scrapy.Spider):
         self.collection.create_index('Publication_Date')
 
         # Grid FS
-        self.paper_fs = gridfs.GridFS(self.db)
+        self.paper_fs = gridfs.GridFS(self.db, collection=self.collection_name + '_fs')
 
     def update_article(self, article):
         meta_dict = {}
