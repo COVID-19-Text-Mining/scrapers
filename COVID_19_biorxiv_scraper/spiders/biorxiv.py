@@ -46,6 +46,8 @@ class BiorxivSpider(scrapy.Spider):
                 meta_dict[key] = article[key]
                 del article[key]
         article['_scrapy_meta'] = meta_dict
+        article['last_updated'] = datetime.now()
+
         self.collection.update(
             {'Doi': article['Doi']},
             article,
