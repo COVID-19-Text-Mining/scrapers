@@ -164,7 +164,8 @@ class BiorxivSpider(scrapy.Spider):
         yield Request(
             url=pdf_url,
             meta=result,
-            callback=self.handle_medrxiv_pdf
+            callback=self.handle_medrxiv_pdf,
+            priority=10,
         )
 
     def handle_biorxiv(self, response):
