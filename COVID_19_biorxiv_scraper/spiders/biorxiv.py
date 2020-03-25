@@ -85,7 +85,8 @@ class BiorxivSpider(scrapy.Spider):
                 continue
 
             yield Request(
-                url='https://doi.org/%s' % doi,
+                # url='https://doi.org/%s' % doi,
+                url=entry['rel_link'],
                 dont_filter=True,
                 callback=site_table[entry['rel_site']],
                 # Pass in initial meta data dictionary
