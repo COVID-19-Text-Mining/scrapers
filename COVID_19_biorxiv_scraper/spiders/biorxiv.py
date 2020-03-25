@@ -69,11 +69,6 @@ class BiorxivSpider(scrapy.Spider):
 
         data = json.loads(response.body_as_unicode())
         for entry in data['rels']:
-            # No idea why but need to take the first element and sort out null
-            if not entry:
-                continue
-            entry = entry[0]
-
             # DOI case insensitive
             doi = entry['rel_doi'].lower()
             publish_date = datetime.strptime(entry['rel_date'], '%Y-%m-%d')
