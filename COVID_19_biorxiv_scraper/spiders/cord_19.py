@@ -45,7 +45,7 @@ class Cord19Spider(scrapy.Spider):
     def parse_page(self, response):
         file_list_html = response.xpath('//ul').extract_first()
         for url in Selector(text=file_list_html).xpath('//a/@href').extract():
-            if url.endswith('.tar.gz') and 'bio' in url:
+            if url.endswith('.tar.gz'):
                 yield Request(
                     url=url,
                     callback=self.parse_gzip,
