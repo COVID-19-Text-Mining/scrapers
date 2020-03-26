@@ -45,7 +45,7 @@ class Cord19Spider(scrapy.Spider):
     def parse_page(self, response):
         file_list_html = response.xpath('//ul').extract_first()
         for url in Selector(text=file_list_html).xpath('//a/@href').extract():
-            if url.endswith('.tar.gz'):
+            if url.endswith('.tar.gz') and 'bio' in url:
                 yield Request(
                     url=url,
                     callback=self.parse_gzip,
@@ -73,7 +73,17 @@ class Cord19Spider(scrapy.Spider):
             data = json.load(contents)
 
             collection = self.db[self.subset_collection_map[content_type]]
-            if collection.find_one({'paper_id': paper_id}) is None:
+
+            insert = True
+
+            old_doc = collection.find_one({'paper_id': data['paper_id']})
+            if old_doc is not None:
+                old_doc = {x: old_doc[x] for x in data}
+
+                if old_doc == data:
+                    insert = False
+
+            if insert:
                 self.logger.info("Insert paper with id %s", paper_id)
                 data.update({
                     'last_updated': datetime.now()
