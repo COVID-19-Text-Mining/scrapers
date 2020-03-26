@@ -39,7 +39,14 @@ class ChemrxivSpider(scrapy.Spider):
     allowed_domains = ['chemrxiv.org']
     start_urls = ['http://chemrxiv.org/']
 
-    keyword = 'COVID-19'
+    keyword = ':search_term:"COVID-19" OR ' \
+              ':search_term:Coronavirus OR ' \
+              ':search_term:"Corona virus" OR ' \
+              ':search_term:"2019-nCoV" OR ' \
+              ':search_term:"SARS-CoV" OR ' \
+              ':search_term:"MERS-CoV" OR ' \
+              ':search_term:"Severe Acute Respiratory Syndrome" OR ' \
+              ':search_term:"Middle East Respiratory Syndrome"'
     # DB specs
     db = None
     collection = None
