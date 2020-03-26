@@ -1,0 +1,4 @@
+python-dateutil
+pymongo
+PyPDF2
+scrapy
