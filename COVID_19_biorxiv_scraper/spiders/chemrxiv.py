@@ -188,9 +188,17 @@ class ChemrxivSpider(scrapy.Spider):
         meta = response.meta
         meta['Link'] = response.request.url
         meta['Doi'] = response.xpath('//meta[@name="citation_doi"]/@content').extract_first()
+
+        # Note that here we actually combines all paragraphs into one.
+        # Maybe preferable now since we use ElasticSearch.
+        # However maybe use other (bs4) to extract paragraphs.
         meta['Abstract'] = list(filter(
             lambda x: x.strip(),
-            response.xpath('//div[contains(@class,"description")]/text()').extract()))
+            response.xpath('string(//div[contains(@class,"description")])').extract()))
+        meta['Abstract'] = list(map(
+            lambda x: re.sub(r'\s+', ' ', x),
+            meta['Abstract']
+        ))
         meta['Keywords'] = list(filter(
             lambda x: x.strip(),
             response.xpath('//div[contains(@class,"tags")]//span/text()').extract()))
