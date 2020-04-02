@@ -5,9 +5,13 @@ from datetime import datetime
 
 import gridfs
 import scrapy
+from bs4 import BeautifulSoup
 from pymongo import MongoClient, HASHED
 from scrapy import Request
 from scrapy import Selector
+from scrapy.http import TextResponse
+
+from COVID_19_biorxiv_scraper.html_extractor.paragraphs import extract_paragraphs_recursive
 
 
 class PublichealthontarioSpider(scrapy.Spider):
@@ -42,10 +46,11 @@ class PublichealthontarioSpider(scrapy.Spider):
             url='https://www.publichealthontario.ca/en/diseases-and-conditions/infectious-diseases/respiratory-diseases/novel-coronavirus/articles',
             callback=self.parse)
 
-    def handle_pdf(self, response):
-        result = response.meta
+    def save_object(self, result):
+        pdf_bytes = result['pdf_bytes']
+        del result['pdf_bytes']
 
-        pdf_file = io.BytesIO(response.body)
+        pdf_file = io.BytesIO(pdf_bytes)
         file_id = self.grid_fs.put(
             pdf_file.read(),
             filename=re.sub(r'[^a-zA-Z0-9]', '-', result['Title']) + '.pdf',
@@ -64,6 +69,64 @@ class PublichealthontarioSpider(scrapy.Spider):
             {'Link': result['Link']},
             result,
             upsert=True
+        )
+
+    @staticmethod
+    def find_abstract_by_parsing(content):
+        # Parse the HTML
+        paragraphs = extract_paragraphs_recursive(BeautifulSoup(content, features='html.parser'))
+
+        def find_section(obj):
+            if isinstance(obj, dict):
+                if re.sub(r'[^\w]+', '', obj['name']).lower() == 'abstract':
+                    return list(filter(lambda x: isinstance(x, str), obj['content']))
+                elif isinstance(obj['content'], list):
+                    for i in obj['content']:
+                        r = find_section(i)
+                        if r:
+                            return r
+            elif isinstance(obj, list):
+                for i in obj:
+                    r = find_section(i)
+                    if r:
+                        return r
+
+            return []
+
+        abstract = find_section(paragraphs)
+        if not isinstance(abstract, list):
+            abstract = [abstract]
+        return abstract
+
+    def handle_paper_page(self, response):
+        meta = response.meta
+
+        if isinstance(response, TextResponse):
+            # Webpage parsing has a higher priority
+            abstract = self.find_abstract_by_parsing(response.text)
+
+            if len(abstract) == 0:
+                # Try getting meta
+                abstract = response.xpath('//meta[@name="citation_abstract"]/@content').extract()
+                if len(abstract) == 0:
+                    abstract = response.xpath('//meta[@name="dc.description"]/@content').extract()
+                if len(abstract) == 0:
+                    abstract = response.xpath('//meta[@name="description"]/@content').extract()
+        else:
+            abstract = None
+
+        meta['Abstract'] = abstract
+        self.save_object(meta)
+
+    def handle_pdf(self, response):
+        meta = response.meta
+        meta['pdf_bytes'] = response.body
+        yield response.follow(
+            url=meta['Link'],
+            callback=self.handle_paper_page,
+            dont_filter=True,
+            meta=meta,
+            priority=12,
         )
 
     def parse(self, response):
