@@ -121,6 +121,7 @@ class PublichealthontarioSpider(scrapy.Spider):
     def handle_pdf(self, response):
         meta = response.meta
         meta['pdf_bytes'] = response.body
+        meta['Synopsis_Link'] = response.request.url
         yield response.follow(
             url=meta['Link'],
             callback=self.handle_paper_page,
