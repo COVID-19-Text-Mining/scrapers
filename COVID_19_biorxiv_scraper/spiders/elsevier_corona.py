@@ -99,8 +99,6 @@ class ElsevierCoronaSpider(scrapy.Spider):
                 except Exception as e:
                     self.logger.exception('Cannot handle meta %r, %r', file, e)
 
-                break
-
     def scrape_xml(self, connection):
         with connection.cd('xml'):
             for file in connection.listdir_attr():
@@ -108,8 +106,6 @@ class ElsevierCoronaSpider(scrapy.Spider):
                     self.handle_xml(file, connection)
                 except Exception as e:
                     self.logger.exception('Cannot handle XML %r, %r', file, e)
-
-                break
 
     def start_requests(self):
         self.setup_db()
