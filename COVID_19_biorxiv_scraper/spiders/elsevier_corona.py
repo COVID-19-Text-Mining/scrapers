@@ -49,7 +49,7 @@ class ElsevierCoronaSpider(scrapy.Spider):
         paper_id = m.group(1)
 
         # check old files!
-        old_meta = list(self.meta_collection.find({'paper_id': paper_id}))
+        old_meta = list(self.meta_collection.find({'paper_id': paper_id}, {'mtime': 1}))
         if any(x['mtime'] >= mtime for x in old_meta):
             return
 
@@ -75,7 +75,7 @@ class ElsevierCoronaSpider(scrapy.Spider):
         paper_id = m.group(1)
 
         # check old files!
-        old_meta = list(self.xml_collection.find({'paper_id': paper_id}))
+        old_meta = list(self.xml_collection.find({'paper_id': paper_id}, {'mtime': 1}))
         if any(x['mtime'] >= mtime for x in old_meta):
             return
 
