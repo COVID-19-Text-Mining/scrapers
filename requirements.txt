@@ -1,4 +1,5 @@
 python-dateutil
 pymongo
 PyPDF2
+pysftp
 scrapy
