@@ -40,7 +40,7 @@ class DimensionCOVIDScraper:
         logger.info("Dimensions scraper starts.")
         table = self.download_file()
         for sheet_name in self.sheet_names:
-            self.parse_table(table, sheet_name)
+            self.parse_sheet(table, sheet_name)
         logger.info("Dimensions scraper ends. (Finished)")
 
     def download_file(self):
@@ -51,7 +51,7 @@ class DimensionCOVIDScraper:
         logger.info("Download the file successfully.")
         return response.content
 
-    def parse_table(self, table, sheet_name):
+    def parse_sheet(self, table, sheet_name):
         sheet = pd.read_excel(table, sheet_name=sheet_name)
         sheet_name = sheet_name.lower().replace(" ", "_")
         indexes = [index.lower().replace(" ", "_") for index in sheet.columns]
@@ -65,3 +65,7 @@ class DimensionCOVIDScraper:
         if self.collection.find_one(entry) is None:
             logger.info("Get new paper: {}".format(entry))
             self.collection.update_one(entry, upsert=True)
+
+
+if __name__ == "__main__":
+    DimensionCOVIDScraper().pipeline()
