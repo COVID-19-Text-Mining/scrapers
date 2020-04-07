@@ -1,5 +1,6 @@
 import io
 import re
+import time
 from datetime import datetime
 
 import pysftp
@@ -75,11 +76,11 @@ class ElsevierCoronaSpider(scrapy.Spider):
         paper_id = m.group(1)
 
         # check old files!
-        old_meta = list(self.xml_collection.find({'paper_id': paper_id}, {'mtime': 1}))
-        if any(x['mtime'] >= mtime for x in old_meta):
+        old_xml = list(self.xml_collection.find({'paper_id': paper_id}, {'mtime': 1}))
+        if any(x['mtime'] >= mtime for x in old_xml):
             return
 
-        version = len(old_meta) + 1
+        version = len(old_xml) + 1
         data = io.BytesIO()
         connection.getfo(filename, data)
 
@@ -94,7 +95,13 @@ class ElsevierCoronaSpider(scrapy.Spider):
 
     def scrape_meta(self, connection):
         with connection.cd('meta'):
-            for file in connection.listdir_attr():
+            last_checkin = 0
+            for i, file in enumerate(connection.listdir_attr()):
+                # Keep alive
+                if time.time() > last_checkin + 5:
+                    self.logger.info('Sending heart beat signal')
+                    connection.stat(file.filename)
+                    last_checkin = time.time()
                 try:
                     self.handle_meta(file, connection)
                 except Exception as e:
@@ -102,7 +109,13 @@ class ElsevierCoronaSpider(scrapy.Spider):
 
     def scrape_xml(self, connection):
         with connection.cd('xml'):
+            last_checkin = 0
             for file in connection.listdir_attr():
+                # Keep alive
+                if time.time() > last_checkin + 5:
+                    self.logger.info('Sending heart beat signal')
+                    connection.stat(file.filename)
+                    last_checkin = time.time()
                 try:
                     self.handle_xml(file, connection)
                 except Exception as e:
