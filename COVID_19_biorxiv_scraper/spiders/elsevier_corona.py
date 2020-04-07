@@ -88,6 +88,7 @@ class ElsevierCoronaSpider(scrapy.Spider):
             'version': version,
             'atime': atime,
             'mtime': mtime,
+            'last_updated': mtime,
             'xml': data.getvalue().decode()
         })
 
