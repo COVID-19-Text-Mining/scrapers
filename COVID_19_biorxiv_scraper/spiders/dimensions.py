@@ -1,30 +1,38 @@
-import requests
-import logging
 import pandas as pd
 from pymongo import MongoClient, HASHED
-import gridfs
 from numpy import nan
+import scrapy
 
-logger = logging.getLogger(__name__)
 
-
-class DimensionCOVIDScraper:
-    user_agent = "COVID-19 Scholar: Text-mining for COVID-19 research @ LBNL " \
-                 "(+http://covidscholar.com/) (+covid19textmining@googlegroups.com)"
-
+class DimensionCOVIDScraper(scrapy.Spider):
+    name = "dimensions"
     url = "https://s3-eu-west-1.amazonaws.com/" \
           "pstorage-dimensions-5390582489/22163685/" \
           "DimensionsCOVID19publicationsdatasetsclinicaltrialsupdateddaily.xlsx"
 
-    settings = {}
-    collection_name = ""
     sheet_names = ("Publications", "Clinical Trials", "Datasets")
 
-    default_value = ""
+    # change the collection names here
+    collection_names = [name.lower().replace(" ", "_") for name in sheet_names]
 
-    def __init__(self):
+    # set entries
+    entries = (
+        [("publication_id", HASHED), ("doi", HASHED)],  # publications
+        [("trial_id", HASHED)],  # clinical trials
+        [("dataset_id", HASHED), ("doi", HASHED)]  # datasets
+    )
+
+    default_value = ""  # value for empty entries, bool(defalut_value) should return False
+
+    query_keys = (
+        ("publication_id", "doi"),
+        ("trial_id",),
+        ("dataset_id", "doi")
+    )
+
+    def setup_db(self):
         """
-        Setup database and collection.
+        Setup database and collection. Ensure indices.
         """
         self.db = MongoClient(
             host=self.settings['MONGO_HOSTNAME'],
@@ -34,38 +42,34 @@ class DimensionCOVIDScraper:
             password=self.settings['MONGO_PASSWORD'],
             source=self.settings['MONGO_AUTHENTICATION_DB']
         )
-        self.collection = self.db[self.collection_name]
 
-    def pipeline(self):
-        logger.info("Dimensions scraper starts.")
-        table = self.download_file()
-        for sheet_name in self.sheet_names:
-            self.parse_sheet(table, sheet_name)
-        logger.info("Dimensions scraper ends. (Finished)")
+    def start_requests(self):
+        self.setup_db()
 
-    def download_file(self):
-        with requests.Session() as req:
-            self.user_agent and req.headers.update({"User-Agent": self.user_agent})
-            response = req.get(self.url)
-            response.raise_for_status()
-        logger.info("Download the file successfully.")
-        return response.content
+        yield scrapy.Request(
+            url=self.url
+        )
 
-    def parse_sheet(self, table, sheet_name):
+    def parse(self, response):
+        table = response.body
+        for sheet_name, collection_name, entries, keys in \
+                zip(self.sheet_names, self.collection_names, self.entries, self.query_keys):
+            collection = self.db[collection_name]
+            for entry in entries:
+                collection.create_index([entry])
+            self.parse_sheet(table, sheet_name, collection, keys)
+
+    def parse_sheet(self, table, sheet_name, collection, keys):
         sheet = pd.read_excel(table, sheet_name=sheet_name)
-        sheet_name = sheet_name.lower().replace(" ", "_")
         indexes = [index.lower().replace(" ", "_") for index in sheet.columns]
         for row in sheet.values:
             row = [i if i is not nan else self.default_value for i in row]
             entry = dict(zip(indexes, row))
-            entry["source_type"] = sheet_name
-            self.insert_entry(entry)
+            self.insert_entry(keys, entry, collection)
 
-    def insert_entry(self, entry):
-        if self.collection.find_one(entry) is None:
-            logger.info("Get new paper: {}".format(entry))
-            self.collection.update_one(entry, upsert=True)
-
-
-if __name__ == "__main__":
-    DimensionCOVIDScraper().pipeline()
+    @staticmethod
+    def insert_entry(keys, entry, collection):
+        collection.replace_one(
+            filter={key: entry[key] for key in keys if entry[key]},
+            replacement=entry, upsert=True
+        )
