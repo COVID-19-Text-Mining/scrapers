@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import datetime
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urljoin
 
 import scrapy
 from pymongo import MongoClient, HASHED
@@ -141,9 +141,10 @@ class PatentSpider(scrapy.Spider):
             next_page_extend_link = response.xpath(
                 './/a[contains(@class, "fa-chevron-right")]/@href')
             if len(next_page_extend_link) > 0:
-                next_page_link = "https://www.lens.org/" + next_page_extend_link.extract_first().strip()
                 yield scrapy.Request(
-                    next_page_link,
+                    urljoin(
+                        response.request.url,
+                        next_page_extend_link.extract_first().strip()),
                     callback=self.parse
                 )
             else:
