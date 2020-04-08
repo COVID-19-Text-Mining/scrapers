@@ -1,19 +1,16 @@
 import pandas as pd
 from pymongo import MongoClient, HASHED
-from numpy import nan
 import scrapy
 
 
 class DimensionCOVIDScraper(scrapy.Spider):
     name = "dimensions"
-    url = "https://s3-eu-west-1.amazonaws.com/" \
-          "pstorage-dimensions-5390582489/22163685/" \
-          "DimensionsCOVID19publicationsdatasetsclinicaltrialsupdateddaily.xlsx"
+    url = "https://www.dimensions.ai/news/dimensions-is-facilitating-access-to-covid-19-research/"
 
     sheet_names = ("Publications", "Clinical Trials", "Datasets")
 
     # change the collection names here
-    collection_names = [name.lower().replace(" ", "_") for name in sheet_names]
+    collection_names = ["Dimensions_"+name.lower().replace(" ", "_") for name in sheet_names]
 
     # set entries
     entries = (
@@ -21,8 +18,6 @@ class DimensionCOVIDScraper(scrapy.Spider):
         [("trial_id", HASHED)],  # clinical trials
         [("dataset_id", HASHED), ("doi", HASHED)]  # datasets
     )
-
-    default_value = ""  # value for empty entries, bool(defalut_value) should return False
 
     query_keys = (
         ("publication_id", "doi"),
@@ -47,7 +42,32 @@ class DimensionCOVIDScraper(scrapy.Spider):
         self.setup_db()
 
         yield scrapy.Request(
-            url=self.url
+            url=self.url,
+            callback=self.get_download_page
+        )
+
+    def get_download_page(self, response):
+        new_url = response.xpath(
+            "//section[contains(@class, \"article-body py-6\")]/ul/li[2]/a/@href"
+        ).extract_first()
+
+        assert new_url, "Cannot find the url of the xlsx table"
+
+        yield scrapy.Request(
+            url=new_url,
+            callback=self.download_table
+        )
+
+    def download_table(self, response):
+        new_url = response.xpath(
+            "//a[contains(@class, \"normal-link download-button shallow-button\")]/@href"
+        ).extract_first()
+
+        assert new_url, "Cannot find the url of the xlsx table"
+
+        yield scrapy.Request(
+            url=new_url,
+            callback=self.parse
         )
 
     def parse(self, response):
@@ -60,16 +80,19 @@ class DimensionCOVIDScraper(scrapy.Spider):
             self.parse_sheet(table, sheet_name, collection, keys)
 
     def parse_sheet(self, table, sheet_name, collection, keys):
-        sheet = pd.read_excel(table, sheet_name=sheet_name)
+        sheet = pd.read_excel(table, sheet_name=sheet_name, parse_dates=[0], na_filter=False)
         indexes = [index.lower().replace(" ", "_") for index in sheet.columns]
         for row in sheet.values:
-            row = [i if i is not nan else self.default_value for i in row]
+            assert len(row) == len(indexes), "wrong entry number"
             entry = dict(zip(indexes, row))
             self.insert_entry(keys, entry, collection)
 
     @staticmethod
     def insert_entry(keys, entry, collection):
-        collection.replace_one(
-            filter={key: entry[key] for key in keys if entry[key]},
-            replacement=entry, upsert=True
-        )
+        if collection.find_one({key: entry[key] for key in keys if entry[key]}) is None:
+            collection.insert_one(entry)
+
+    @staticmethod
+    def date_parser(date: str):
+        print(date)
+        return pd.to_datetime(date, format("%Y-%m-%d")).date()
