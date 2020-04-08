@@ -8,7 +8,7 @@ from scrapy.utils.markup import remove_tags
 
 
 class PatentSpider(scrapy.Spider):
-    name = "patent_spider"
+    name = "lens_patent_spider"
 
     db = None
     collection_name = 'Scraper_lens_patents'
@@ -136,7 +136,6 @@ class PatentSpider(scrapy.Spider):
                 },
                 priority=10,
             )
-            break
 
         if len(patents_this_page) == 50:
             next_page_extend_link = response.xpath(
