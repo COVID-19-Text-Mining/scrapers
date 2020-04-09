@@ -39,9 +39,18 @@ class BiorxivVersionTrackerSpider(scrapy.Spider):
     def start_requests(self):
         self.setup_db()
 
+        per_doi = {}
         for document in self.collection.find():
             if self.tracker_collection.find_one({'Doi': document['Doi']}) is not None:
                 continue
+            if document['Doi'] in per_doi:
+                update_date, doc = per_doi[document['Doi']]
+                if update_date >= document['last_updated']:
+                    continue
+
+            per_doi[document['Doi']] = (document['last_updated'], document)
+
+        for doi, (_, document) in per_doi.items():
             yield Request(
                 url=document['Link'] + '.article-info?versioned=true',
                 callback=self.test_new_versions,
