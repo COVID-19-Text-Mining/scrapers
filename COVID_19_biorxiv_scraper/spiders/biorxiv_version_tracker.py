@@ -67,6 +67,8 @@ class BiorxivVersionTrackerSpider(scrapy.Spider):
 
         if new_version_url is not None:
             site = 'biorxiv' if 'biorxiv.org' in new_version_url else 'medrxiv'
+            self.logger.info('Registering new update job for DOI: %s Link: %s',
+                             response.meta['Doi'], new_version_url)
             new_job = {
                 'scrapy_url': new_version_url,
                 'scrapy_site': site,
