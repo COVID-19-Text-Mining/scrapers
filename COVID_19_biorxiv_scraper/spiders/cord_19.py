@@ -106,6 +106,6 @@ class Cord19Spider(scrapy.Spider):
                 self.logger.info("Insert paper with id %s", paper_id)
                 data.update({
                     'last_updated': datetime.now(),
-                    '_additional_flags': additional_annotation,
+                    # '_additional_flags': additional_annotation,
                 })
                 collection.insert_one(data)
