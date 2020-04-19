@@ -20,6 +20,9 @@ class BiorxivSpider(scrapy.Spider):
     paper_fs = None
     collection_name = 'Scraper_connect_biorxiv_org'
 
+    tracker_collection = None
+    tracker_collection_name = 'Scraper_connect_biorxiv_org_new_versions'
+
     def setup_db(self):
         """Setup database and collection. Ensure indices."""
         self.db = MongoClient(
@@ -36,10 +39,12 @@ class BiorxivSpider(scrapy.Spider):
         self.collection.create_index([('Doi', HASHED)])
         self.collection.create_index('Publication_Date')
 
+        self.tracker_collection = self.db[self.tracker_collection_name]
+
         # Grid FS
         self.paper_fs = gridfs.GridFS(self.db, collection=self.collection_name + '_fs')
 
-    def update_article(self, article):
+    def insert_article(self, article):
         meta_dict = {}
         for key in list(article):
             if key[0].islower():
@@ -48,14 +53,32 @@ class BiorxivSpider(scrapy.Spider):
         article['_scrapy_meta'] = meta_dict
         article['last_updated'] = datetime.now()
 
-        self.collection.update(
-            {'Doi': article['Doi']},
-            article,
-            upsert=True
-        )
+        self.collection.insert_one(article)
 
     def start_requests(self):
         self.setup_db()
+
+        # handle updated articles
+        site_table = {
+            'medrxiv': self.handle_medrxiv,
+            'biorxiv': self.handle_biorxiv,
+        }
+        updates_to_remove = []
+        for update in self.tracker_collection.find():
+            yield Request(
+                url=update['scrapy_url'],
+                callback=site_table[update['scrapy_site']],
+                meta={
+                    'Doi': update['Doi'],
+                    'Journal': update['Journal'],
+                    'Publication_Date': update['Publication_Date'],
+                    'Origin': update['Origin'],
+                })
+            updates_to_remove.append(update['_id'])
+
+        for i in range(0, len(updates_to_remove), 100):
+            end = min(len(updates_to_remove), 100 + i)
+            self.tracker_collection.delete_many({'_id': {'$in': updates_to_remove[i:end]}})
 
         yield Request(
             url=self.json_source,
@@ -102,20 +125,21 @@ class BiorxivSpider(scrapy.Spider):
 
         pdf_fn = result['Doi'].replace('/', '-') + '.pdf'
 
-        # Remove old files
-        for file in self.paper_fs.find(
-                {"filename": pdf_fn},
-                no_cursor_timeout=True):
-            self.paper_fs.delete(file['_id'])
+        # # Don't Remove old files
+        # for file in self.paper_fs.find(
+        #         {"filename": pdf_fn},
+        #         no_cursor_timeout=True):
+        #     self.paper_fs.delete(file._id)
 
         file_id = self.paper_fs.put(
             response.body,
             filename=pdf_fn,
+            page_link=result['Link'],
             manager_collection=self.collection_name,
         )
         result['PDF_gridfs_id'] = file_id
 
-        self.update_article(result)
+        self.insert_article(result)
 
     def handle_medrxiv(self, response):
         result = response.meta
