@@ -84,14 +84,15 @@ class Cord19Spider(scrapy.Spider):
         for file in archive.getmembers():
             path = file.name
 
-            m = re.search(r'([\w_]+)[/\\]([a-f0-9]+)\.json', path)
+            m = re.search(r'([\w_]+)[/\\].*?json', path)
             if not m:
                 continue
 
-            additional_annotation, paper_id = m.groups()
+            additional_annotation = m.group(1)
 
             contents = archive.extractfile(file)
             data = json.load(contents)
+            paper_id = data['paper_id']
 
             insert = True
 
