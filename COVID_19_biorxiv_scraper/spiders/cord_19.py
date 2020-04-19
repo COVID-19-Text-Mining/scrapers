@@ -92,7 +92,6 @@ class Cord19Spider(scrapy.Spider):
 
             contents = archive.extractfile(file)
             data = json.load(contents)
-            data['_additional_flags'] = additional_annotation
 
             insert = True
 
@@ -105,6 +104,7 @@ class Cord19Spider(scrapy.Spider):
             if insert:
                 self.logger.info("Insert paper with id %s", paper_id)
                 data.update({
-                    'last_updated': datetime.now()
+                    'last_updated': datetime.now(),
+                    '_additional_flags': additional_annotation,
                 })
                 collection.insert_one(data)
