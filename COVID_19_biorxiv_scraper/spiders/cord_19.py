@@ -38,16 +38,28 @@ class Cord19Spider(scrapy.Spider):
         self.setup_db()
 
         tar_gz_files = [
-            'https://ai2-semanticscholar-cord-19.s3-us-west-2.amazonaws.com/latest/comm_use_subset.tar.gz',
-            'https://ai2-semanticscholar-cord-19.s3-us-west-2.amazonaws.com/latest/noncomm_use_subset.tar.gz',
-            'https://ai2-semanticscholar-cord-19.s3-us-west-2.amazonaws.com/latest/custom_license.tar.gz',
-            'https://ai2-semanticscholar-cord-19.s3-us-west-2.amazonaws.com/latest/biorxiv_medrxiv.tar.gz',
+            (
+                'comm_use_subset',
+                'https://ai2-semanticscholar-cord-19.s3-us-west-2.amazonaws.com/latest/comm_use_subset.tar.gz'),
+            (
+                'noncomm_use_subset',
+                'https://ai2-semanticscholar-cord-19.s3-us-west-2.amazonaws.com/latest/noncomm_use_subset.tar.gz'),
+            (
+                'custom_license',
+                'https://ai2-semanticscholar-cord-19.s3-us-west-2.amazonaws.com/latest/custom_license.tar.gz'),
+            (
+                'biorxiv_medrxiv',
+                'https://ai2-semanticscholar-cord-19.s3-us-west-2.amazonaws.com/latest/biorxiv_medrxiv.tar.gz'),
         ]
-        for link in tar_gz_files:
+        for content_type, link in tar_gz_files:
             yield Request(
                 url=link,
                 callback=self.parse_gzip,
-                meta={'download_maxsize': 0, 'download_warnsize': 0},
+                meta={
+                    'download_maxsize': 0,
+                    'download_warnsize': 0,
+                    'content_type': content_type,
+                },
                 dont_filter=True)
 
     def parse_page(self, response):
@@ -66,6 +78,9 @@ class Cord19Spider(scrapy.Spider):
         gzipfile = gzip.GzipFile(fileobj=fileio, mode='rb')
         archive = tarfile.TarFile(fileobj=gzipfile, mode='r')
 
+        content_type = response.meta['content_type']
+        collection = self.db[self.subset_collection_map[content_type]]
+
         for file in archive.getmembers():
             path = file.name
 
@@ -73,21 +88,17 @@ class Cord19Spider(scrapy.Spider):
             if not m:
                 continue
 
-            content_type, paper_id = m.groups()
-            if content_type not in self.subset_collection_map:
-                continue
+            additional_annotation, paper_id = m.groups()
 
             contents = archive.extractfile(file)
             data = json.load(contents)
-
-            collection = self.db[self.subset_collection_map[content_type]]
+            data['_additional_flags'] = additional_annotation
 
             insert = True
 
             old_doc = collection.find_one({'paper_id': data['paper_id']})
             if old_doc is not None:
                 old_doc = {x: old_doc[x] for x in data}
-
                 if old_doc == data:
                     insert = False
 
