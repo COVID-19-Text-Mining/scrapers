@@ -37,10 +37,18 @@ class Cord19Spider(scrapy.Spider):
     def start_requests(self):
         self.setup_db()
 
-        yield Request(
-            url='https://pages.semanticscholar.org/coronavirus-research',
-            callback=self.parse_page
-        )
+        tar_gz_files = [
+            'https://ai2-semanticscholar-cord-19.s3-us-west-2.amazonaws.com/latest/comm_use_subset.tar.gz',
+            'https://ai2-semanticscholar-cord-19.s3-us-west-2.amazonaws.com/latest/noncomm_use_subset.tar.gz',
+            'https://ai2-semanticscholar-cord-19.s3-us-west-2.amazonaws.com/latest/custom_license.tar.gz',
+            'https://ai2-semanticscholar-cord-19.s3-us-west-2.amazonaws.com/latest/biorxiv_medrxiv.tar.gz',
+        ]
+        for link in tar_gz_files:
+            yield Request(
+                url=link,
+                callback=self.parse_gzip,
+                meta={'download_maxsize': 0, 'download_warnsize': 0},
+                dont_filter=True)
 
     def parse_page(self, response):
         file_list_html = response.xpath('//ul').extract_first()
