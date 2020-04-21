@@ -1,12 +1,16 @@
+import io
 import json
 import logging
 import re
+import traceback
 from datetime import datetime
 
 import gridfs
 import scrapy
 from pymongo import MongoClient, HASHED
 from scrapy import Request, Selector
+
+from pdf_extractor.paragraphs import extract_paragraphs_pdf
 
 
 class BiorxivSpider(scrapy.Spider):
@@ -22,6 +26,33 @@ class BiorxivSpider(scrapy.Spider):
 
     tracker_collection = None
     tracker_collection_name = 'Scraper_connect_biorxiv_org_new_versions'
+    pdf_parser_version = 'biorxiv_20200421'
+    laparams = {
+        'char_margin': 3.0,
+        'line_margin': 2.5
+    }
+
+    def parse_pdf(self, pdf_data, filename):
+        data = io.BytesIO(pdf_data)
+        try:
+            paragraphs = extract_paragraphs_pdf(data, laparams=self.laparams, return_dicts=True)
+            return {
+                'pdf_extraction_success': True,
+                'pdf_extraction_plist': paragraphs,
+                'pdf_extraction_exec': None,
+                'pdf_extraction_version': self.pdf_parser_version,
+                'parsed_date': datetime.now(),
+            }
+        except Exception as e:
+            self.logger.exception(f'Cannot parse pdf for file {filename}')
+            exc = f'Failed to extract PDF {filename} {e}' + traceback.format_exc()
+            return {
+                'pdf_extraction_success': False,
+                'pdf_extraction_plist': None,
+                'pdf_extraction_exec': exc,
+                'pdf_extraction_version': self.pdf_parser_version,
+                'parsed_date': datetime.now(),
+            }
 
     def setup_db(self):
         """Setup database and collection. Ensure indices."""
@@ -131,12 +162,16 @@ class BiorxivSpider(scrapy.Spider):
         #         no_cursor_timeout=True):
         #     self.paper_fs.delete(file._id)
 
-        file_id = self.paper_fs.put(
-            response.body,
-            filename=pdf_fn,
-            page_link=result['Link'],
-            manager_collection=self.collection_name,
-        )
+        pdf_data = response.body
+        parsing_result = self.parse_pdf(pdf_data, pdf_fn)
+        meta = parsing_result.copy()
+        meta.update({
+            'filename': pdf_fn,
+            'manager_collection': self.collection_name,
+            'page_link': result['Link'],
+        })
+        file_id = self.paper_fs.put(pdf_data, **meta)
+
         result['PDF_gridfs_id'] = file_id
 
         self.insert_article(result)

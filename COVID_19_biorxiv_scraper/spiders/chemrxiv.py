@@ -1,6 +1,7 @@
 import io
 import json
 import re
+import traceback
 import urllib.parse
 import zipfile
 from datetime import datetime
@@ -11,6 +12,8 @@ import scrapy
 from PyPDF2.pdf import PdfFileReader, PdfFileWriter
 from pymongo import MongoClient, HASHED
 from scrapy import Request
+
+from pdf_extractor.paragraphs import extract_paragraphs_pdf
 
 
 def pdf_cat(input_files, output_stream):
@@ -52,6 +55,33 @@ class ChemrxivSpider(scrapy.Spider):
     collection = None
     paper_fs = None
     collection_name = 'Scraper_chemrxiv_org'
+    pdf_parser_version = 'chemrxiv_20200421'
+    laparams = {
+        'char_margin': 3.0,
+        'line_margin': 2.5
+    }
+
+    def parse_pdf(self, pdf_data, filename):
+        data = io.BytesIO(pdf_data)
+        try:
+            paragraphs = extract_paragraphs_pdf(data, laparams=self.laparams, return_dicts=True)
+            return {
+                'pdf_extraction_success': True,
+                'pdf_extraction_plist': paragraphs,
+                'pdf_extraction_exec': None,
+                'pdf_extraction_version': self.pdf_parser_version,
+                'parsed_date': datetime.now(),
+            }
+        except Exception as e:
+            self.logger.exception(f'Cannot parse pdf for file {filename}')
+            exc = f'Failed to extract PDF {filename} {e}' + traceback.format_exc()
+            return {
+                'pdf_extraction_success': False,
+                'pdf_extraction_plist': None,
+                'pdf_extraction_exec': exc,
+                'pdf_extraction_version': self.pdf_parser_version,
+                'parsed_date': datetime.now(),
+            }
 
     def setup_db(self):
         """Setup database and collection. Ensure indices."""
@@ -136,11 +166,14 @@ class ChemrxivSpider(scrapy.Spider):
                     no_cursor_timeout=True):
                 self.paper_fs.delete(file['_id'])
 
-            file_id = self.paper_fs.put(
-                pdf_file.read(),
-                filename=pdf_fn,
-                manager_collection=self.collection_name,
-            )
+            pdf_data = pdf_file.read()
+            parsing_result = self.parse_pdf(pdf_data, pdf_fn)
+            meta = parsing_result.copy()
+            meta.update({
+                'filename': pdf_fn,
+                'manager_collection': self.collection_name,
+            })
+            file_id = self.paper_fs.put(pdf_data, **meta)
             article['PDF_gridfs_id'] = file_id
         else:
             article['PDF_gridfs_id'] = None
