@@ -13,7 +13,7 @@ from PyPDF2.pdf import PdfFileReader, PdfFileWriter
 from pymongo import MongoClient, HASHED
 from scrapy import Request
 
-from pdf_extractor.paragraphs import extract_paragraphs_pdf
+from ..pdf_extractor.paragraphs import extract_paragraphs_pdf
 
 
 def pdf_cat(input_files, output_stream):

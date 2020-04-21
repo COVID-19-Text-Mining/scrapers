@@ -8,6 +8,7 @@
 #     https://docs.scrapy.org/en/latest/topics/settings.html
 #     https://docs.scrapy.org/en/latest/topics/downloader-middleware.html
 #     https://docs.scrapy.org/en/latest/topics/spider-middleware.html
+import os
 
 BOT_NAME = 'COVID_19_biorxiv_scraper'
 
@@ -15,7 +16,9 @@ SPIDER_MODULES = ['COVID_19_biorxiv_scraper.spiders']
 NEWSPIDER_MODULE = 'COVID_19_biorxiv_scraper.spiders'
 
 
-USER_AGENT = 'COVID-19 Scholar: Text-mining for COVID-19 research @ LBNL (+http://covidscholar.com/) (+covid19textmining@googlegroups.com)'
+USER_AGENT = 'COVID-19 Scholar: Text-mining for COVID-19 research @ LBNL ' \
+             '(+http://covidscholar.com/) ' \
+             '(+covid19textmining@googlegroups.com)'
 
 # Obey robots.txt rules
 ROBOTSTXT_OBEY = True
@@ -87,8 +90,8 @@ DOWNLOAD_DELAY = 10
 #HTTPCACHE_IGNORE_HTTP_CODES = []
 #HTTPCACHE_STORAGE = 'scrapy.extensions.httpcache.FilesystemCacheStorage'
 
-MONGO_HOSTNAME = '***'
-MONGO_DB = '***'
-MONGO_USERNAME = '***'
-MONGO_PASSWORD = '***'
-MONGO_AUTHENTICATION_DB = '***'
+MONGO_HOSTNAME = os.environ['MONGO_HOSTNAME']
+MONGO_DB = os.environ['MONGO_DB']
+MONGO_USERNAME = os.environ['MONGO_USERNAME']
+MONGO_PASSWORD = os.environ['MONGO_PASSWORD']
+MONGO_AUTHENTICATION_DB = os.environ['MONGO_AUTHENTICATION_DB']

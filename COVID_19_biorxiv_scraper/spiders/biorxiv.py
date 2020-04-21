@@ -10,7 +10,7 @@ import scrapy
 from pymongo import MongoClient, HASHED
 from scrapy import Request, Selector
 
-from pdf_extractor.paragraphs import extract_paragraphs_pdf
+from ..pdf_extractor.paragraphs import extract_paragraphs_pdf
 
 
 class BiorxivSpider(scrapy.Spider):

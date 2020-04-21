@@ -1,13 +1,8 @@
-import json
-import logging
-import re
-from datetime import datetime
 from urllib.parse import urljoin
 
-import gridfs
 import scrapy
 from pymongo import MongoClient, HASHED
-from scrapy import Request, Selector
+from scrapy import Request
 
 
 class BiorxivVersionTrackerSpider(scrapy.Spider):
