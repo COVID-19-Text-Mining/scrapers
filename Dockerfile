@@ -29,7 +29,7 @@ RUN pip install -r /scraper/requirements.txt
 # Cleanup
 #RUN apk del .build-deps
 RUN rm -rf /root/.cache/pip \
-    /app/wheels
+    /scraper/wheels
 
 ENV MONGO_HOSTNAME mongodb05.nersc.gov
 ENV MONGO_DB COVID-19-text-mining
