@@ -13,7 +13,7 @@ from PyPDF2.pdf import PdfFileReader, PdfFileWriter
 from pymongo import MongoClient, HASHED
 from scrapy import Request
 
-from ..pdf_extractor.paragraphs import extract_paragraphs_pdf
+from ..pdf_extractor.paragraphs import extract_paragraphs_pdf_timeout
 
 
 def pdf_cat(input_files, output_stream):
@@ -64,7 +64,7 @@ class ChemrxivSpider(scrapy.Spider):
     def parse_pdf(self, pdf_data, filename):
         data = io.BytesIO(pdf_data)
         try:
-            paragraphs = extract_paragraphs_pdf(data, laparams=self.laparams, return_dicts=True)
+            paragraphs = extract_paragraphs_pdf_timeout(data, laparams=self.laparams, return_dicts=True)
             return {
                 'pdf_extraction_success': True,
                 'pdf_extraction_plist': paragraphs,

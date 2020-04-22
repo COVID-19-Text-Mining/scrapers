@@ -2,7 +2,8 @@ import re
 import string
 import sys
 from collections import Counter
-from io import StringIO
+from io import StringIO, BytesIO
+from multiprocessing import Process, Pipe
 
 from pdfminer.converter import TextConverter
 from pdfminer.layout import LAParams, LTContainer, LTTextBox, LTLayoutContainer, LTTextLineHorizontal, \
@@ -190,6 +191,30 @@ def extract_paragraphs_pdf(pdf_file, return_dicts=False, only_printable=True, la
     return paragraphs
 
 
+def _worker_another_process(pdf_data, pipe, kwargs):
+    pdf_file = BytesIO(pdf_data)
+    data = extract_paragraphs_pdf(pdf_file, **kwargs)
+    pipe.send(data)
+
+
+def extract_paragraphs_pdf_timeout(pdf_file, timeout=60, return_dicts=False, only_printable=True, laparams=None):
+    pipe1, pipe2 = Pipe(duplex=True)
+    process = Process(target=_worker_another_process,
+                      args=(pdf_file.read(), pipe2, {
+                          'return_dicts': return_dicts,
+                          'only_printable': only_printable,
+                          'laparams': laparams
+                      }))
+    process.start()
+    if pipe1.poll(timeout=timeout):
+        result = pipe1.recv()
+        process.join()
+        return result
+    else:
+        process.terminate()
+        raise TimeoutError('PDF extraction timeout')
+
+
 if __name__ == '__main__':
     if len(sys.argv) == 3:
         _, input_file, output_file = sys.argv
@@ -203,7 +228,7 @@ if __name__ == '__main__':
         print('Usage: %s <input_pdf> [output_txt]' % sys.argv[0])
         sys.exit(1)
 
-    for i, paragraph in enumerate(extract_paragraphs_pdf(input_file)):
+    for i, paragraph in enumerate(extract_paragraphs_pdf_timeout(input_file, timeout=5)):
         output_file.write('------ Paragraph %d ------\n\n' % i)
         output_file.write(paragraph)
         output_file.write('\n\n')
