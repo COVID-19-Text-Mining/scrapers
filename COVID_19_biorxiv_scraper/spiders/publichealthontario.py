@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import io
 import re
+import traceback
 from datetime import datetime
 
 import gridfs
@@ -11,7 +12,8 @@ from scrapy import Request
 from scrapy import Selector
 from scrapy.http import TextResponse
 
-from COVID_19_biorxiv_scraper.html_extractor.paragraphs import extract_paragraphs_recursive
+from ..html_extractor.paragraphs import extract_paragraphs_recursive
+from ..pdf_extractor.paragraphs import extract_paragraphs_pdf_timeout
 
 
 class PublichealthontarioSpider(scrapy.Spider):
@@ -22,6 +24,34 @@ class PublichealthontarioSpider(scrapy.Spider):
     db = None
     collection = None
     grid_fs = None
+    pdf_parser_version = 'biorxiv_20200421'
+    parser_version = 'pho_20200423'
+    laparams = {
+        'char_margin': 1.0,
+        'line_margin': 3.0
+    }
+
+    def parse_pdf(self, pdf_data, filename):
+        data = io.BytesIO(pdf_data)
+        try:
+            paragraphs = extract_paragraphs_pdf_timeout(data, laparams=self.laparams, return_dicts=True)
+            return {
+                'pdf_extraction_success': True,
+                'pdf_extraction_plist': paragraphs,
+                'pdf_extraction_exec': None,
+                'pdf_extraction_version': self.pdf_parser_version,
+                'parsed_date': datetime.now(),
+            }
+        except Exception as e:
+            self.logger.exception(f'Cannot parse pdf for file {filename}')
+            exc = f'Failed to extract PDF {filename} {e}' + traceback.format_exc()
+            return {
+                'pdf_extraction_success': False,
+                'pdf_extraction_plist': None,
+                'pdf_extraction_exec': exc,
+                'pdf_extraction_version': self.pdf_parser_version,
+                'parsed_date': datetime.now(),
+            }
 
     def setup_db(self):
         """Setup database and collection. Ensure indices."""
@@ -50,11 +80,16 @@ class PublichealthontarioSpider(scrapy.Spider):
         pdf_bytes = result['pdf_bytes']
         del result['pdf_bytes']
 
-        pdf_file = io.BytesIO(pdf_bytes)
+        pdf_fn = re.sub(r'[^a-zA-Z0-9]', '-', result['Title']) + '.pdf'
+        parsing_result = self.parse_pdf(pdf_bytes, pdf_fn)
+        meta = parsing_result.copy()
+        meta.update({
+            'filename': pdf_fn,
+            'page_link': result['Link'],
+        })
+
         file_id = self.grid_fs.put(
-            pdf_file.read(),
-            filename=re.sub(r'[^a-zA-Z0-9]', '-', result['Title']) + '.pdf',
-        )
+            pdf_bytes, **meta)
         result['PDF_gridfs_id'] = file_id
 
         meta_dict = {}
