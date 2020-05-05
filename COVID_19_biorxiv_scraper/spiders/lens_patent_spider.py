@@ -80,11 +80,6 @@ class PatentSpider(scrapy.Spider):
                 patent.xpath(
                     './/div[contains(@class, "lens-id")]//a/text()').extract()).strip()
 
-            exists = self.collection.find_one(
-                {'Lens_ID': lens_id}) is not None
-            if exists:
-                continue
-
             title = patent.xpath('.//h3//a/text()').extract_first().strip()
 
             published_data_raw = {}
@@ -120,6 +115,12 @@ class PatentSpider(scrapy.Spider):
                 applicants = list(map(str.strip, applicants.split(',')))
 
             abstract_link = "https://www.lens.org/lens/patent/%s" % (lens_id,)
+
+            exists = self.collection.find_one(
+                {'Lens_ID': lens_id}) is not None
+            if exists:
+                continue
+
             yield scrapy.Request(
                 abstract_link,
                 callback=self.parse_abstract,

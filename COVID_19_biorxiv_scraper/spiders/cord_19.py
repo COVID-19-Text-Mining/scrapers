@@ -4,13 +4,13 @@ import json
 import re
 import tarfile
 from datetime import datetime
-from pprint import  pprint
-import numpy as np
 
+import numpy as np
+import pandas as pd
 import scrapy
 from pymongo import MongoClient
 from scrapy import Request, Selector
-import pandas as pd
+
 
 class Cord19Spider(scrapy.Spider):
     name = 'cord_19'
@@ -186,7 +186,7 @@ class Cord19Spider(scrapy.Spider):
 
             old_doc = collection.find_one({'cord_uid': data['cord_uid']})
             if old_doc is not None:
-                old_doc = {x: old_doc[x] for x in data}
+                old_doc = {x: old_doc.get(x, None) for x in data}
                 if old_doc == data:
                     insert = False
 

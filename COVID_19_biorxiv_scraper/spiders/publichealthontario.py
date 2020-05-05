@@ -24,8 +24,7 @@ class PublichealthontarioSpider(scrapy.Spider):
     db = None
     collection = None
     grid_fs = None
-    pdf_parser_version = 'biorxiv_20200421'
-    parser_version = 'pho_20200423'
+    pdf_parser_version = 'pho_20200423'
     laparams = {
         'char_margin': 1.0,
         'line_margin': 3.0
@@ -166,21 +165,21 @@ class PublichealthontarioSpider(scrapy.Spider):
         )
 
     def parse(self, response):
-        for row in response.xpath('//table//tr').extract():
+        for row in response.xpath('//table//tr').extract()[1:]:
             date_created = Selector(text=row).xpath(
-                '//div[contains(@class, "postDate")]/text()').extract_first()
+                '//td[1]/p/text()[1]').extract_first()
             authors = Selector(text=row).xpath(
-                '//td[2]/text()[1]').extract_first()
+                '//td[2]/p/text()[1]').extract_first()
             title = Selector(text=row).xpath(
-                '//td[2]/strong/text()').extract_first()
+                '//td[2]/p/strong/text()').extract_first()
             journal = Selector(text=row).xpath(
-                '//td[2]/text()[2]').extract_first()
+                '//td[2]/p/text()[2]').extract_first()
             link = Selector(text=row).xpath(
-                '//td[2]/a/@href').extract_first()
+                '//td[2]/p/a/@href').extract_first()
             desc = Selector(text=row).xpath(
-                '//td[3]/text()').extract_first()
+                '//td[3]/p/text()').extract_first()
             synopsis = Selector(text=row).xpath(
-                '//td[4]/a/@href').extract_first()
+                '//td[4]/p/a/@href').extract_first()
 
             old_item = self.collection.find_one({'Link': link})
             if synopsis is None or (old_item is not None and old_item['Date_Created'] >= date_created):
