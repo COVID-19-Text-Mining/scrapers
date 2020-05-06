@@ -41,18 +41,18 @@ class Cord19Spider(scrapy.Spider):
         self.setup_db()
 
         data_files = [
-            # (
-            #     'comm_use_subset',
-            #     'https://ai2-semanticscholar-cord-19.s3-us-west-2.amazonaws.com/latest/comm_use_subset.tar.gz'),
-            # (
-            #     'noncomm_use_subset',
-            #     'https://ai2-semanticscholar-cord-19.s3-us-west-2.amazonaws.com/latest/noncomm_use_subset.tar.gz'),
-            # (
-            #     'custom_license',
-            #     'https://ai2-semanticscholar-cord-19.s3-us-west-2.amazonaws.com/latest/custom_license.tar.gz'),
-            # (
-            #     'biorxiv_medrxiv',
-            #     'https://ai2-semanticscholar-cord-19.s3-us-west-2.amazonaws.com/latest/biorxiv_medrxiv.tar.gz'),
+            (
+                'comm_use_subset',
+                'https://ai2-semanticscholar-cord-19.s3-us-west-2.amazonaws.com/latest/comm_use_subset.tar.gz'),
+            (
+                'noncomm_use_subset',
+                'https://ai2-semanticscholar-cord-19.s3-us-west-2.amazonaws.com/latest/noncomm_use_subset.tar.gz'),
+            (
+                'custom_license',
+                'https://ai2-semanticscholar-cord-19.s3-us-west-2.amazonaws.com/latest/custom_license.tar.gz'),
+            (
+                'biorxiv_medrxiv',
+                'https://ai2-semanticscholar-cord-19.s3-us-west-2.amazonaws.com/latest/biorxiv_medrxiv.tar.gz'),
             (
                 'metadata',
                 'https://ai2-semanticscholar-cord-19.s3-us-west-2.amazonaws.com/latest/metadata.csv'),
@@ -181,8 +181,6 @@ class Cord19Spider(scrapy.Spider):
 
         for i in range(len(df)):
             data = correct_pd_dict(df.iloc[i].to_dict())
-            if data['cord_uid'] != 'ine3fcv3':
-                continue
 
             insert = True
 
