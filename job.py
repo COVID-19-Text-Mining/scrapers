@@ -1,5 +1,6 @@
 import os
 import time
+from threading import Thread
 
 jobs = {
     'scrapy crawl biorxiv': 3600,
@@ -20,9 +21,15 @@ if __name__ == '__main__':
     current_dir = os.path.realpath(os.path.dirname(__file__))
     os.chdir(current_dir)
 
-    last_run = time.time()
-
     timer = jobs.copy()
+    running = {name: None for name in jobs}
+
+    def poll_jobs():
+        for name in running:
+            if running[name] is not None and not running[name].is_alive():
+                running[name].join()
+                print(f'Job {name} finished.')
+                running[name] = None
 
 
     def reset_job(name):
@@ -37,10 +44,18 @@ if __name__ == '__main__':
         for name in list(timer):
             timer[name] -= 1
 
+        poll_jobs()
+
         execution = [x for x in timer if timer[x] == 0]
         for job in execution:
-            print(f'Running job "{job}"')
-            run_job(job)
+            if running[job] is not None:
+                print(f'Job {job} already running, skipping execution')
+            else:
+                print(f'Running job "{job}"')
+                t = Thread(target=run_job, args=(job,))
+                t.start()
+                running[job] = t
+
             reset_job(job)
 
         time.sleep(1)
