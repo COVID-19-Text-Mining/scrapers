@@ -186,11 +186,11 @@ class Cord19Spider(scrapy.Spider):
 
             # FIXME: fetch the last one
             old_docs = collection.find({'cord_uid': data['cord_uid']}).sort('last_updated', -1)
-            if old_docs:
-                old_doc = old_docs[0]
+            for old_doc in old_docs:
                 old_doc = {x: old_doc.get(x, None) for x in data}
                 if old_doc == data:
                     insert = False
+                    break
 
             if insert:
                 self.logger.info("Insert paper with cord_uid %s", data['cord_uid'])
