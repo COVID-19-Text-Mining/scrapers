@@ -190,7 +190,11 @@ class BiorxivSpider(scrapy.Spider):
                 response.xpath("//meta[contains(@name,'citation_author')]/@content").extract()):
             if name == 'citation_author':
                 # Split FN/LN by whitespace
-                fn, ln = content.strip().rsplit(' ', maxsplit=1)
+                names = content.strip().rsplit(' ', maxsplit=1)
+                if len(names) == 2:
+                    fn, ln = names
+                else:
+                    fn, ln = '', names[0]
                 authors.append({
                     'Name': {'fn': fn, 'ln': ln}
                 })
