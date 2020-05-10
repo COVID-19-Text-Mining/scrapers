@@ -31,7 +31,7 @@ wheels = [
 
 jobs_registry = {
     'scrapy crawl biorxiv': 3600,
-    'scrapy crawl cord_19': 3600,
+    'scrapy crawl cord_19': 3600 * 6,
     'scrapy crawl chemrxiv': 3600,
     'scrapy crawl publichealthontario': 3600,
     'scrapy crawl elsevier_corona': 3600,
