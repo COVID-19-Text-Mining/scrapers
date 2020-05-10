@@ -63,9 +63,10 @@ class PatentSpider(scrapy.Spider):
 
     def start_requests(self):
         self.setup_db()
+        today = datetime.datetime.now().strftime("%Y%m%d")
 
         yield scrapy.Request(
-            url=self.build_lens_url(dates="+pub_date:19740101-20200402"),
+            url=self.build_lens_url(dates=f"+pub_date:20200101-{today}"),
             callback=self.parse,
             dont_filter=True)
 

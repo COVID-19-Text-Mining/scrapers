@@ -166,8 +166,11 @@ class PublichealthontarioSpider(scrapy.Spider):
 
     def parse(self, response):
         for row in response.xpath('//table//tr').extract()[1:]:
-            date_created = Selector(text=row).xpath(
-                '//td[1]/p/text()[1]').extract_first()
+            try:
+                date_created = re.search(r'\w+\s+\d{2},\s+\d{4}', Selector(text=row).xpath(
+                    '//td[1]').extract_first()).group(0)
+            except AttributeError:
+                continue
             authors = Selector(text=row).xpath(
                 '//td[2]/p/text()[1]').extract_first()
             title = Selector(text=row).xpath(
@@ -181,8 +184,22 @@ class PublichealthontarioSpider(scrapy.Spider):
             synopsis = Selector(text=row).xpath(
                 '//td[4]/p/a/@href').extract_first()
 
-            old_item = self.collection.find_one({'Link': link})
-            if synopsis is None or (old_item is not None and old_item['Date_Created'] >= date_created):
+            if synopsis is None:
+                continue
+
+            old_items = self.collection.find({'Link': link})
+            insert = True
+            for item in old_items:
+                old_date = item['Date_Created'] or 'January 01, 1970'
+                try:
+                    old_date = datetime.strptime(old_date, '%B %d, %Y')
+                    new_date = datetime.strptime(date_created, '%B %d, %Y')
+                    if old_date >= new_date:
+                        insert = False
+                except ValueError:
+                    continue
+
+            if not insert:
                 continue
 
             meta = {
