@@ -167,22 +167,34 @@ class PublichealthontarioSpider(scrapy.Spider):
     def parse(self, response):
         for row in response.xpath('//table//tr').extract()[1:]:
             try:
-                date_created = re.search(r'\w+\s+\d{2},\s+\d{4}', Selector(text=row).xpath(
+                date_created = re.search(r'\w+\s+\d{1,2},\s+\d{4}', Selector(text=row).xpath(
                     '//td[1]').extract_first()).group(0)
             except AttributeError:
                 continue
             authors = Selector(text=row).xpath(
-                '//td[2]/p/text()[1]').extract_first()
+                '//td[2]/p/text()[1]').extract_first() or \
+                      Selector(text=row).xpath(
+                          '//td[2]/text()[1]').extract_first()
             title = Selector(text=row).xpath(
-                '//td[2]/p/strong/text()').extract_first()
+                '//td[2]/p/strong/text()').extract_first() or \
+                    Selector(text=row).xpath(
+                        '//td[2]/strong/text()').extract_first()
             journal = Selector(text=row).xpath(
-                '//td[2]/p/text()[2]').extract_first()
+                '//td[2]/p/text()[2]').extract_first() or \
+                      Selector(text=row).xpath(
+                          '//td[2]/text()[2]').extract_first()
             link = Selector(text=row).xpath(
-                '//td[2]/p/a/@href').extract_first()
+                '//td[2]/p/a/@href').extract_first() or \
+                   Selector(text=row).xpath(
+                       '//td[2]/a/@href').extract_first()
             desc = Selector(text=row).xpath(
-                '//td[3]/p/text()').extract_first()
+                '//td[3]/p/text()').extract_first() or \
+                   Selector(text=row).xpath(
+                       '//td[3]/text()').extract_first()
             synopsis = Selector(text=row).xpath(
-                '//td[4]/p/a/@href').extract_first()
+                '//td[4]/p/a/@href').extract_first() or \
+                       Selector(text=row).xpath(
+                           '//td[4]/a/@href').extract_first()
 
             if synopsis is None:
                 continue
@@ -204,9 +216,9 @@ class PublichealthontarioSpider(scrapy.Spider):
 
             meta = {
                 'Date_Created': date_created,
-                'Authors': authors.split(', '),
+                'Authors': authors.strip().split(', '),
                 'Title': re.sub(r'\s+', ' ', title),
-                'Journal_String': re.sub(r'\s+', ' ', journal),
+                'Journal_String': re.sub(r'\s+', ' ', journal.strip()),
                 'Link': link,
                 'Desc': re.sub(r'\s+', ' ', desc),
             }
