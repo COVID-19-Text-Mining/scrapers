@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Scrapy settings for COVID_19_biorxiv_scraper project
+# Scrapy settings for covidscholar_scraper project
 #
 # For simplicity, this file contains only settings considered important or
 # commonly used. You can find more settings consulting the documentation:
@@ -10,10 +10,10 @@
 #     https://docs.scrapy.org/en/latest/topics/spider-middleware.html
 import os
 
-BOT_NAME = 'COVID_19_biorxiv_scraper'
+BOT_NAME = 'covidscholar_scraper'
 
-SPIDER_MODULES = ['COVID_19_biorxiv_scraper.spiders']
-NEWSPIDER_MODULE = 'COVID_19_biorxiv_scraper.spiders'
+SPIDER_MODULES = ['covidscholar_scraper.spiders']
+NEWSPIDER_MODULE = 'covidscholar_scraper.spiders'
 
 
 USER_AGENT = 'COVID-19 Scholar: Text-mining for COVID-19 research @ LBNL ' \
@@ -48,13 +48,13 @@ DOWNLOAD_DELAY = 10
 # Enable or disable spider middlewares
 # See https://docs.scrapy.org/en/latest/topics/spider-middleware.html
 #SPIDER_MIDDLEWARES = {
-#    'COVID_19_biorxiv_scraper.middlewares.Covid19BiorxivScraperSpiderMiddleware': 543,
+#    'covidscholar_scraper.middlewares.Covid19BiorxivScraperSpiderMiddleware': 543,
 #}
 
 # Enable or disable downloader middlewares
 # See https://docs.scrapy.org/en/latest/topics/downloader-middleware.html
 #DOWNLOADER_MIDDLEWARES = {
-#    'COVID_19_biorxiv_scraper.middlewares.Covid19BiorxivScraperDownloaderMiddleware': 543,
+#    'covidscholar_scraper.middlewares.Covid19BiorxivScraperDownloaderMiddleware': 543,
 #}
 
 # Enable or disable extensions
@@ -66,7 +66,7 @@ DOWNLOAD_DELAY = 10
 # Configure item pipelines
 # See https://docs.scrapy.org/en/latest/topics/item-pipeline.html
 #ITEM_PIPELINES = {
-#    'COVID_19_biorxiv_scraper.pipelines.Covid19BiorxivScraperPipeline': 300,
+#    'covidscholar_scraper.pipelines.Covid19BiorxivScraperPipeline': 300,
 #}
 
 # Enable and configure the AutoThrottle extension (disabled by default)
