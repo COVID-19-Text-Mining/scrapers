@@ -6,3 +6,4 @@ pymongo
 PyPDF2
 pysftp
 scrapy
+xlrd
