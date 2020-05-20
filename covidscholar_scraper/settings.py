@@ -17,7 +17,7 @@ NEWSPIDER_MODULE = 'covidscholar_scraper.spiders'
 
 
 USER_AGENT = 'COVID-19 Scholar: Text-mining for COVID-19 research @ LBNL ' \
-             '(+http://covidscholar.com/) ' \
+             '(+http://covidscholar.org/) ' \
              '(+covid19textmining@googlegroups.com)'
 
 # Obey robots.txt rules
