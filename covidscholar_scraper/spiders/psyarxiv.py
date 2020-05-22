@@ -54,7 +54,14 @@ class PsyarxivSpider(scrapy.Spider):
 
     def setup_db(self):
         """Setup database and collection. Ensure indices."""
-        self.db = MongoClient('localhost', 27017).test_database
+        self.db = MongoClient(
+            host=self.settings['MONGO_HOSTNAME'],
+        )[self.settings['MONGO_DB']]
+        self.db.authenticate(
+            name=self.settings['MONGO_USERNAME'],
+            password=self.settings['MONGO_PASSWORD'],
+            source=self.settings['MONGO_AUTHENTICATION_DB']
+        )
         self.collection = self.db[self.collection_name]
 
         # Create indices
