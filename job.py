@@ -38,6 +38,7 @@ jobs_registry = {
     'scrapy crawl elsevier_corona': 3600,
     'scrapy crawl lens_patent_spider': 3600,
     'scrapy crawl biorxiv_version_tracker': 86400,
+    'scrapy crawl psyarxiv': 3600 * 6,
 }
 
 
