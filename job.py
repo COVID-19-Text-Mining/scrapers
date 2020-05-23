@@ -39,6 +39,7 @@ jobs_registry = {
     'scrapy crawl lens_patent_spider': 3600,
     'scrapy crawl biorxiv_version_tracker': 86400,
     'scrapy crawl psyarxiv': 3600 * 6,
+    'scrapy crawl thelancet': 3600 * 6,
 }
 
 
