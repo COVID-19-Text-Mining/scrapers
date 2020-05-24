@@ -4,31 +4,28 @@ import re
 import traceback
 from datetime import datetime
 
-import dateutil.parser
 import gridfs
 import scrapy
 from pymongo import MongoClient, HASHED
 from scrapy import Request
-from scrapy.http import JsonRequest
 
 from ..pdf_extractor.paragraphs import extract_paragraphs_pdf_timeout
 
 
-class PsyarxivSpider(scrapy.Spider):
-    name = 'psyarxiv'
-    url = 'https://share.osf.io/api/v2/search/creativeworks/_search'
+class ThelancetSpider(scrapy.Spider):
+    name = 'thelancet'
+    url = 'https://www.thelancet.com/coronavirus/archive?startPage=0#navigation'
 
     # DB specs
     db = None
     collection = None
     paper_fs = None
-    collection_name = 'Scraper_share_osf_io'
-    pdf_parser_version = 'psyarxiv_20200421'
+    collection_name = 'Scraper_thelancet_com'
+    pdf_parser_version = 'thelancet_20200421'
     laparams = {
         'char_margin': 3.0,
         'line_margin': 2.5
     }
-    post_params = {"query":{"bool":{"must":{"query_string":{"query":"*"}},"filter":[{"term":{"sources":"PsyArXiv"}},{"term":{"type":"preprint"}}]}},"from":0,"aggregations":{"sources":{"terms":{"field":"sources","size":500}}}}
 
     def parse_pdf(self, pdf_data, filename):
         data = io.BytesIO(pdf_data)
@@ -75,55 +72,39 @@ class PsyarxivSpider(scrapy.Spider):
     def start_requests(self):
         self.setup_db()
 
-        yield JsonRequest(
+        yield Request(
             url=self.url,
-            data=self.post_params,
-            callback=self.get_num_papers,
-            meta={ 'dont_obey_robotstxt': True }
+            callback=self.parse,
+            dont_filter=True,
+            meta={ 'dont_obey_robotstxt': True },
         )
 
-    def get_num_papers(self, response):
+    def parse(self, response):
         meta = response.meta
-        data = json.loads(response.body)
-        num_papers = data['hits']['total']
-        num_iterations = num_papers - (num_papers % 10) # at most 10 papers per page
+        links = response.xpath('//body//div[@class="articleTitle"]//a/@href').extract()
+        publish_dates = response.xpath('//body//div[@class="published-online"]/text()').extract()
 
-        for iteration in range(0, num_iterations + 1, 10):
-            self.post_params['from'] = iteration
-            yield JsonRequest(
-                url=self.url,
-                data=self.post_params,
-                callback=self.parse_query_result,
-                meta=meta,
-                dont_filter=True
-            )
+        for i in range(0, len(publish_dates)):
+            publish_dates[i] = (re.search(r'^Published:\s(.*)$', publish_dates[i])).group(1)
 
-    def parse_query_result(self, response):
-        meta = response.meta
-        data = json.loads(response.body)
-        r_psyarxiv_link = re.compile(r'^http://psyarxiv.com/.*')
+        titles = [h2.xpath('string(a)').get() for h2 in response.xpath('//body//div[@class="articleTitle"]/h2')]
 
-        for item in data['hits']['hits']:
-            pubdate = dateutil.parser.isoparse(item['_source']['date_published'])
-            try:
-                psyarxiv_link = list(filter(r_psyarxiv_link.match, item['_source']['identifiers']))[0]
-            except:
-                continue
-            psyarxiv_preprint_id = re.split('[ /]', psyarxiv_link)[3]
-
+        for article_number in range(0, len(links)):
             if self.collection.find_one(
-                    {'Title': item['_source']['title'], 'Publication_Date': pubdate}) is None:
-                meta['Title'] = item['_source']['title']
-                meta['Journal'] = 'psyarxiv'
-                meta['Origin'] = 'All preprints from psyarxiv rss feed'
-                meta['Publication_Date'] = pubdate
-                meta['Authors'] = [{'Name': x} for x in item['_source']['contributors']]
-                meta['Link'] = psyarxiv_link
+                    {'Title': titles[article_number], 'Publication_Date': publish_dates[article_number]}) is None:
+                meta['Title'] = titles[article_number]
+                meta['Journal'] = 'thelancet'
+                meta['Origin'] = 'All coronavirus articles from thelancet'
+                meta['Publication_Date'] = publish_dates[article_number]
+                meta['Link'] = 'https://www.thelancet.com' + links[article_number]
                 yield Request(
-                    url='https://api.osf.io/v2/preprints/'+ psyarxiv_preprint_id + '/?format=json',
+                    url='https://www.thelancet.com' + links[article_number],
                     callback=self.parse_article,
                     meta=meta
                 )
+        next_page = response.xpath('//body//li[@class="next"]/a/@href').get()
+        if next_page is not None:
+            yield response.follow(next_page, callback=self.parse, meta={ 'dont_obey_robotstxt': True})
 
     def insert_article(self, article):
         meta_dict = {}
@@ -156,14 +137,11 @@ class PsyarxivSpider(scrapy.Spider):
 
     def parse_article(self, response):
         meta = response.meta
-        preprint_data = json.loads(response.body)
-        meta['Doi'] = preprint_data['data']['links']['preprint_doi']
-        meta['Abstract'] = preprint_data['data']['attributes']['description']
-        meta['Keywords'] = preprint_data['data']['attributes']['tags']
-        article_link = meta['Link'] + 'download'
+        meta['Doi'] = response.xpath('//body//div[@class="inline-it"]//a/text()').extract_first()
+        article_link = response.xpath('//body//li[@class="article-tools__item article-tools__pdf"]/a/@href').get()
 
         yield Request(
-            url=article_link,
+            url='https://www.thelancet.com' + article_link,
             meta=meta,
             callback=self.handle_pdf,
             priority=10,
