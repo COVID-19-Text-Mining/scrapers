@@ -76,9 +76,11 @@ class ThelancetSpider(scrapy.Spider):
             url=self.url,
             callback=self.parse,
             dont_filter=True,
+            meta={ 'dont_obey_robotstxt': True },
         )
 
     def parse(self, response):
+        meta = response.meta
         links = response.xpath('//body//div[@class="articleTitle"]//a/@href').extract()
         publish_dates = response.xpath('//body//div[@class="published-online"]/text()').extract()
 
@@ -90,20 +92,19 @@ class ThelancetSpider(scrapy.Spider):
         for article_number in range(0, len(links)):
             if self.collection.find_one(
                     {'Title': titles[article_number], 'Publication_Date': publish_dates[article_number]}) is None:
+                meta['Title'] = titles[article_number]
+                meta['Journal'] = 'thelancet'
+                meta['Origin'] = 'All coronavirus articles from thelancet'
+                meta['Publication_Date'] = publish_dates[article_number]
+                meta['Link'] = 'https://www.thelancet.com' + links[article_number]
                 yield Request(
                     url='https://www.thelancet.com' + links[article_number],
                     callback=self.parse_article,
-                    meta={
-                        'Title': titles[article_number],
-                        'Journal': 'thelancet',
-                        'Origin': 'All coronavirus articles from thelancet',
-                        'Publication_Date': publish_dates[article_number],
-                        'Link': 'https://www.thelancet.com' + links[article_number],
-                    }
+                    meta=meta
                 )
         next_page = response.xpath('//body//li[@class="next"]/a/@href').get()
         if next_page is not None:
-            yield response.follow(next_page, callback=self.parse)
+            yield response.follow(next_page, callback=self.parse, meta={ 'dont_obey_robotstxt': True})
 
     def insert_article(self, article):
         meta_dict = {}

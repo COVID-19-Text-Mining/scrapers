@@ -79,9 +79,11 @@ class PsyarxivSpider(scrapy.Spider):
             url=self.url,
             data=self.post_params,
             callback=self.get_num_papers,
+            meta={ 'dont_obey_robotstxt': True }
         )
 
     def get_num_papers(self, response):
+        meta = response.meta
         data = json.loads(response.body)
         num_papers = data['hits']['total']
         num_iterations = num_papers - (num_papers % 10) # at most 10 papers per page
@@ -92,31 +94,35 @@ class PsyarxivSpider(scrapy.Spider):
                 url=self.url,
                 data=self.post_params,
                 callback=self.parse_query_result,
+                meta=meta,
+                dont_filter=True
             )
 
     def parse_query_result(self, response):
+        meta = response.meta
         data = json.loads(response.body)
         r_psyarxiv_link = re.compile(r'^http://psyarxiv.com/.*')
 
         for item in data['hits']['hits']:
-
             pubdate = dateutil.parser.isoparse(item['_source']['date_published'])
-            psyarxiv_link = list(filter(r_psyarxiv_link.match, item['_source']['identifiers']))[0]
+            try:
+                psyarxiv_link = list(filter(r_psyarxiv_link.match, item['_source']['identifiers']))[0]
+            except:
+                continue
             psyarxiv_preprint_id = re.split('[ /]', psyarxiv_link)[3]
 
             if self.collection.find_one(
                     {'Title': item['_source']['title'], 'Publication_Date': pubdate}) is None:
+                meta['Title'] = item['_source']['title']
+                meta['Journal'] = 'psyarxiv'
+                meta['Origin'] = 'All preprints from psyarxiv rss feed'
+                meta['Publication_Date'] = pubdate
+                meta['Authors'] = [{'Name': x} for x in item['_source']['contributors']]
+                meta['Link'] = psyarxiv_link
                 yield Request(
                     url='https://api.osf.io/v2/preprints/'+ psyarxiv_preprint_id + '/?format=json',
                     callback=self.parse_article,
-                    meta={
-                        'Title': item['_source']['title'],
-                        'Journal': 'psyarxiv',
-                        'Origin': 'All preprints from psyarxiv rss feed',
-                        'Publication_Date': pubdate,
-                        'Authors': [{'Name': x} for x in item['_source']['contributors']],
-                        'Link': psyarxiv_link
-                    }
+                    meta=meta
                 )
 
     def insert_article(self, article):
