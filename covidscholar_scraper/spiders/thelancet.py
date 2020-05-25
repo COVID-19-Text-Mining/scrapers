@@ -138,6 +138,7 @@ class ThelancetSpider(scrapy.Spider):
     def parse_article(self, response):
         meta = response.meta
         meta['Doi'] = response.xpath('//body//div[@class="inline-it"]//a/text()').extract_first()
+        meta['Authors'] = [{'Name': x} for x in response.xpath('//body//li[@class="loa__item author"]/div[@class="dropBlock article-header__info"]/a/text()').extract()]
         article_link = response.xpath('//body//li[@class="article-tools__item article-tools__pdf"]/a/@href').get()
 
         yield Request(
