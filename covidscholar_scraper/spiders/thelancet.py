@@ -4,12 +4,12 @@ import re
 import traceback
 from datetime import datetime
 
-import gridfs
 import scrapy
 from pymongo import MongoClient, HASHED
 from scrapy import Request
+from bs4 import BeautifulSoup
 
-from ..pdf_extractor.paragraphs import extract_paragraphs_pdf_timeout
+from ..html_extractor.paragraphs import extract_paragraphs_recursive
 
 
 class ThelancetSpider(scrapy.Spider):
@@ -27,28 +27,6 @@ class ThelancetSpider(scrapy.Spider):
         'line_margin': 2.5
     }
 
-    def parse_pdf(self, pdf_data, filename):
-        data = io.BytesIO(pdf_data)
-        try:
-            paragraphs = extract_paragraphs_pdf_timeout(data, laparams=self.laparams, return_dicts=True)
-            return {
-                'pdf_extraction_success': True,
-                'pdf_extraction_plist': paragraphs,
-                'pdf_extraction_exec': None,
-                'pdf_extraction_version': self.pdf_parser_version,
-                'parsed_date': datetime.now(),
-            }
-        except Exception as e:
-            self.logger.exception(f'Cannot parse pdf for file {filename}')
-            exc = f'Failed to extract PDF {filename} {e}' + traceback.format_exc()
-            return {
-                'pdf_extraction_success': False,
-                'pdf_extraction_plist': None,
-                'pdf_extraction_exec': exc,
-                'pdf_extraction_version': self.pdf_parser_version,
-                'parsed_date': datetime.now(),
-            }
-
     def setup_db(self):
         """Setup database and collection. Ensure indices."""
         self.db = MongoClient(
@@ -65,9 +43,6 @@ class ThelancetSpider(scrapy.Spider):
         self.collection.create_index([('Doi', HASHED)])
         self.collection.create_index([('Title', HASHED)])
         self.collection.create_index('Publication_Date')
-
-        # Grid FS
-        self.paper_fs = gridfs.GridFS(self.db, collection=self.collection_name + '_fs')
 
     def start_requests(self):
         self.setup_db()
@@ -106,6 +81,33 @@ class ThelancetSpider(scrapy.Spider):
         if next_page is not None:
             yield response.follow(next_page, callback=self.parse, meta={ 'dont_obey_robotstxt': True})
 
+    @staticmethod
+    def find_text_html(content, title):
+        # Parse the HTML
+        paragraphs = extract_paragraphs_recursive(BeautifulSoup(content, features='html.parser'))
+
+        def find_section(obj):
+            if isinstance(obj, dict):
+                if obj['name'] == title:
+                    return list(filter(lambda x: isinstance(x, str), obj['content']))
+                elif isinstance(obj['content'], list):
+                    for i in obj['content']:
+                        r = find_section(i)
+                        if r:
+                            return r
+            elif isinstance(obj, list):
+                for i in obj:
+                    r = find_section(i)
+                    if r:
+                        return r
+
+            return []
+
+        text = find_section(paragraphs)
+        if not isinstance(text, list):
+            text = [text]
+        return text
+
     def insert_article(self, article):
         meta_dict = {}
         for key in list(article):
@@ -117,34 +119,9 @@ class ThelancetSpider(scrapy.Spider):
 
         self.collection.insert_one(article)
 
-    def handle_pdf(self, response):
-        result = response.meta
-        pdf_fn = result['Doi'].replace('/', '-') + '.pdf'
-
-        pdf_data = response.body
-        parsing_result = self.parse_pdf(pdf_data, pdf_fn)
-        meta = parsing_result.copy()
-        meta.update({
-            'filename': pdf_fn,
-            'manager_collection': self.collection_name,
-            'page_link': result['Link'],
-        })
-        file_id = self.paper_fs.put(pdf_data, **meta)
-
-        result['PDF_gridfs_id'] = file_id
-
-        self.insert_article(result)
-
     def parse_article(self, response):
         meta = response.meta
         meta['Doi'] = response.xpath('//body//div[@class="inline-it"]//a/text()').extract_first()
         meta['Authors'] = [{'Name': x} for x in response.xpath('//body//li[@class="loa__item author"]/div[@class="dropBlock article-header__info"]/a/text()').extract()]
-        article_link = response.xpath('//body//li[@class="article-tools__item article-tools__pdf"]/a/@href').get()
-
-        yield Request(
-            url='https://www.thelancet.com' + article_link,
-            meta=meta,
-            callback=self.handle_pdf,
-            priority=10,
-            dont_filter=True,
-        )
+        meta['Text'] = self.find_text_html(response.text, meta['Title'])
+        self.insert_article(meta)
