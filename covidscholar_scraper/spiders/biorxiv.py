@@ -33,7 +33,7 @@ class BiorxivSpider(BaseSpider):
     }
 
     def updated_articles(self, site_table):
-        tracking_col = self.collections['Scraper_connect_biorxiv_org_new_versions']
+        tracking_col = self.get_col('Scraper_connect_biorxiv_org_new_versions')
         updates_to_remove = []
         for update in tracking_col.find():
             yield Request(

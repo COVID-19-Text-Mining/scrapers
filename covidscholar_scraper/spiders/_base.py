@@ -19,10 +19,11 @@ class BaseSpider(scrapy.Spider):
     def __init__(self, *args, **kwargs):
         super(BaseSpider, self).__init__(*args, **kwargs)
 
+        # Note: these are empty when initialized. They will be populated
+        # once any call to get_col or get_gridfs is called.
         self.db: Database = None
         self.collections: Dict[str, Collection] = {}
         self.gridfs: Dict[str, gridfs.GridFS] = {}
-        self.setup_db()
 
     @property
     def collections_config(self) -> dict:
@@ -132,11 +133,13 @@ class BaseSpider(scrapy.Spider):
                 return True
 
     def get_col(self, name):
+        self.setup_db()
         if isinstance(name, Collection):
             return name
         return self.collections[name]
 
     def get_gridfs(self, name):
+        self.setup_db()
         if isinstance(name, gridfs.GridFS):
             return name
         return self.gridfs[name]
@@ -163,15 +166,15 @@ class BaseSpider(scrapy.Spider):
 
                 col.create_index(*index)
 
-        for name, indices in self.collections_config:
+        for name, indices in self.collections_config.items():
             self.collections[name] = self.db[name]
 
             create_index(self.collections[name], indices)
 
         try:
-            for name, indices in self.gridfs_config:
+            for name, indices in self.gridfs_config.items():
                 self.gridfs[name] = gridfs.GridFS(self.db, collection=name)
 
-                create_index(self.gridfs[name].__files, indices)
+                create_index(getattr(self.gridfs[name], '_GridFS__files'), indices)
         except NotImplementedError:
             pass
