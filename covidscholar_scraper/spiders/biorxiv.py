@@ -1,101 +1,41 @@
-import io
 import json
 import logging
 import re
-import traceback
 from datetime import datetime
 
-import gridfs
-import scrapy
-from pymongo import MongoClient, HASHED
+from pymongo import HASHED
 from scrapy import Request, Selector
 
-from ..pdf_extractor.paragraphs import extract_paragraphs_pdf_timeout
+from ._base import BaseSpider
 
 
-class BiorxivSpider(scrapy.Spider):
+class BiorxivSpider(BaseSpider):
     name = 'biorxiv'
     allowed_domains = ['biorxiv.org', 'medrxiv.org']
     json_source = 'https://connect.biorxiv.org/relate/collection_json.php?grp=181'
 
     # DB specs
-    db = None
-    collection = None
-    paper_fs = None
-    collection_name = 'Scraper_connect_biorxiv_org'
+    collections_config = {
+        'Scraper_connect_biorxiv_org': [
+            [('Doi', HASHED)],
+            'Publication_Date',
+        ],
+        'Scraper_connect_biorxiv_org_new_versions': [],
+    }
+    gridfs_config = {
+        'Scraper_connect_biorxiv_org_fs': [],
+    }
 
-    tracker_collection = None
-    tracker_collection_name = 'Scraper_connect_biorxiv_org_new_versions'
     pdf_parser_version = 'biorxiv_20200421'
-    laparams = {
+    pdf_laparams = {
         'char_margin': 3.0,
         'line_margin': 2.5
     }
 
-    def parse_pdf(self, pdf_data, filename):
-        data = io.BytesIO(pdf_data)
-        try:
-            paragraphs = extract_paragraphs_pdf_timeout(data, laparams=self.laparams, return_dicts=True)
-            return {
-                'pdf_extraction_success': True,
-                'pdf_extraction_plist': paragraphs,
-                'pdf_extraction_exec': None,
-                'pdf_extraction_version': self.pdf_parser_version,
-                'parsed_date': datetime.now(),
-            }
-        except Exception as e:
-            self.logger.exception(f'Cannot parse pdf for file {filename}')
-            exc = f'Failed to extract PDF {filename} {e}' + traceback.format_exc()
-            return {
-                'pdf_extraction_success': False,
-                'pdf_extraction_plist': None,
-                'pdf_extraction_exec': exc,
-                'pdf_extraction_version': self.pdf_parser_version,
-                'parsed_date': datetime.now(),
-            }
-
-    def setup_db(self):
-        """Setup database and collection. Ensure indices."""
-        self.db = MongoClient(
-            host=self.settings['MONGO_HOSTNAME'],
-        )[self.settings['MONGO_DB']]
-        self.db.authenticate(
-            name=self.settings['MONGO_USERNAME'],
-            password=self.settings['MONGO_PASSWORD'],
-            source=self.settings['MONGO_AUTHENTICATION_DB']
-        )
-        self.collection = self.db[self.collection_name]
-
-        # Create indices
-        self.collection.create_index([('Doi', HASHED)])
-        self.collection.create_index('Publication_Date')
-
-        self.tracker_collection = self.db[self.tracker_collection_name]
-
-        # Grid FS
-        self.paper_fs = gridfs.GridFS(self.db, collection=self.collection_name + '_fs')
-
-    def insert_article(self, article):
-        meta_dict = {}
-        for key in list(article):
-            if key[0].islower():
-                meta_dict[key] = article[key]
-                del article[key]
-        article['_scrapy_meta'] = meta_dict
-        article['last_updated'] = datetime.now()
-
-        self.collection.insert_one(article)
-
-    def start_requests(self):
-        self.setup_db()
-
-        # handle updated articles
-        site_table = {
-            'medrxiv': self.handle_medrxiv,
-            'biorxiv': self.handle_biorxiv,
-        }
+    def updated_articles(self, site_table):
+        tracking_col = self.collections['Scraper_connect_biorxiv_org_new_versions']
         updates_to_remove = []
-        for update in self.tracker_collection.find():
+        for update in tracking_col.find():
             yield Request(
                 url=update['scrapy_url'],
                 callback=site_table[update['scrapy_site']],
@@ -109,7 +49,13 @@ class BiorxivSpider(scrapy.Spider):
 
         for i in range(0, len(updates_to_remove), 100):
             end = min(len(updates_to_remove), 100 + i)
-            self.tracker_collection.delete_many({'_id': {'$in': updates_to_remove[i:end]}})
+            tracking_col.delete_many({'_id': {'$in': updates_to_remove[i:end]}})
+
+    def start_requests(self):
+        yield from self.updated_articles(site_table={
+            'medrxiv': self.handle_medrxiv,
+            'biorxiv': self.handle_biorxiv,
+        })
 
         yield Request(
             url=self.json_source,
@@ -127,9 +73,9 @@ class BiorxivSpider(scrapy.Spider):
             doi = entry['rel_doi'].lower()
             publish_date = datetime.strptime(entry['rel_date'], '%Y-%m-%d')
 
-            exists = self.collection.find_one(
-                {'Doi': doi, 'Publication_Date': {'$gte': publish_date}}) is not None
-            if exists:
+            if self.has_duplicate(
+                    'Scraper_connect_biorxiv_org',
+                    {'Doi': doi, 'Publication_Date': {'$gte': publish_date}}):
                 continue
 
             if entry['rel_site'] not in site_table:
@@ -154,27 +100,15 @@ class BiorxivSpider(scrapy.Spider):
     def handle_medrxiv_pdf(self, response):
         result = response.meta
 
-        pdf_fn = result['Doi'].replace('/', '-') + '.pdf'
-
-        # # Don't Remove old files
-        # for file in self.paper_fs.find(
-        #         {"filename": pdf_fn},
-        #         no_cursor_timeout=True):
-        #     self.paper_fs.delete(file._id)
-
-        pdf_data = response.body
-        parsing_result = self.parse_pdf(pdf_data, pdf_fn)
-        meta = parsing_result.copy()
-        meta.update({
-            'filename': pdf_fn,
-            'manager_collection': self.collection_name,
-            'page_link': result['Link'],
-        })
-        file_id = self.paper_fs.put(pdf_data, **meta)
+        file_id = self.save_pdf(
+            pdf_bytes=response.body,
+            pdf_fn=result['Doi'].replace('/', '-') + '.pdf',
+            pdf_link=result['Link'],
+            fs='Scraper_connect_biorxiv_org_fs')
 
         result['PDF_gridfs_id'] = file_id
 
-        self.insert_article(result)
+        self.save_article(result, 'Scraper_connect_biorxiv_org')
 
     def handle_medrxiv(self, response):
         result = response.meta
@@ -221,9 +155,8 @@ class BiorxivSpider(scrapy.Spider):
             )
         ))
 
-        pdf_url = response.request.url + '.full.pdf'
         yield Request(
-            url=pdf_url,
+            url=response.request.url + '.full.pdf',
             meta=result,
             callback=self.handle_medrxiv_pdf,
             priority=10,

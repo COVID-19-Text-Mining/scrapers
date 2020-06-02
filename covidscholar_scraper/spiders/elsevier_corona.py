@@ -4,41 +4,24 @@ import time
 from datetime import datetime
 
 import pysftp
-import scrapy
-from pymongo import MongoClient, HASHED
+from pymongo import HASHED
+
+from ._base import BaseSpider
 
 
-class ElsevierCoronaSpider(scrapy.Spider):
+class ElsevierCoronaSpider(BaseSpider):
     name = 'elsevier_corona'
-    allowed_domains = ['semanticscholar.org']
 
-    # DB specs
-    db = None
-    meta_collection = None
-    xml_collection = None
-
-    def setup_db(self):
-        """Setup database and collection. Ensure indices."""
-        self.db = MongoClient(
-            host=self.settings['MONGO_HOSTNAME'],
-        )[self.settings['MONGO_DB']]
-        self.db.authenticate(
-            name=self.settings['MONGO_USERNAME'],
-            password=self.settings['MONGO_PASSWORD'],
-            source=self.settings['MONGO_AUTHENTICATION_DB']
-        )
-
-        self.meta_collection = self.db['Elsevier_corona_meta']
-        self.meta_collection.create_index([('paper_id', HASHED)])
-        self.meta_collection.create_index('paper_id')
-        self.meta_collection.create_index('atime')
-        self.meta_collection.create_index('mtime')
-
-        self.xml_collection = self.db['Elsevier_corona_xml']
-        self.xml_collection.create_index([('paper_id', HASHED)])
-        self.xml_collection.create_index('paper_id')
-        self.xml_collection.create_index('atime')
-        self.xml_collection.create_index('mtime')
+    indices = [
+        [('paper_id', HASHED)],
+        'paper_id',
+        'atime',
+        'mtime',
+    ]
+    collections_config = {
+        'Elsevier_corona_meta': indices,
+        'Elsevier_corona_xml': indices
+    }
 
     def handle_meta(self, fileattrs, connection):
         filename = fileattrs.filename
@@ -49,18 +32,18 @@ class ElsevierCoronaSpider(scrapy.Spider):
             return
         paper_id = m.group(1)
 
-        # check old files!
-        old_meta = list(self.meta_collection.find({'paper_id': paper_id}, {'mtime': 1}))
-        if any(x['mtime'] >= mtime for x in old_meta):
+        if self.has_duplicate(
+                'Elsevier_corona_meta',
+                {'paper_id': paper_id},
+                lambda x: x['mtime'] >= mtime):
             return
 
-        version = len(old_meta) + 1
         data = io.BytesIO()
         connection.getfo(filename, data)
 
-        self.meta_collection.insert_one({
+        self.get_col('Elsevier_corona_meta').insert_one({
             'paper_id': paper_id,
-            'version': version,
+            'version': int(time.time()),
             'atime': atime,
             'mtime': mtime,
             'meta': data.getvalue().decode()
@@ -75,18 +58,18 @@ class ElsevierCoronaSpider(scrapy.Spider):
             return
         paper_id = m.group(1)
 
-        # check old files!
-        old_xml = list(self.xml_collection.find({'paper_id': paper_id}, {'mtime': 1}))
-        if any(x['mtime'] >= mtime for x in old_xml):
+        if self.has_duplicate(
+                'Elsevier_corona_xml',
+                {'paper_id': paper_id},
+                lambda x: x['mtime'] >= mtime):
             return
 
-        version = len(old_xml) + 1
         data = io.BytesIO()
         connection.getfo(filename, data)
 
-        self.xml_collection.insert_one({
+        self.get_col('Elsevier_corona_xml').insert_one({
             'paper_id': paper_id,
-            'version': version,
+            'version': int(time.time()),
             'atime': atime,
             'mtime': mtime,
             'last_updated': mtime,
