@@ -22,7 +22,7 @@ def pdf_cat(input_files, output_stream):
         # operation. Thanks to
         # https://stackoverflow.com/questions/6773631/problem-with-closing-python-pypdf-writing-getting-a-valueerror-i-o-operation/6773733#6773733
         for input_file in input_files:
-            input_streams.append(open(input_file, 'rb'))
+            input_streams.append(input_file)
         writer = PdfFileWriter()
         for reader in map(PdfFileReader, input_streams):
             for n in range(reader.getNumPages()):
@@ -39,7 +39,7 @@ def extract_zip_as_single_pdf(zip_data):
     pdf_stream = []
     for name in z.namelist():
         if name.lower().endswith('.pdf'):
-            pdf_stream.append(z.open(name))
+            pdf_stream.append(io.BytesIO(z.open(name).read()))
 
     combined = io.BytesIO()
     pdf_cat(pdf_stream, combined)
