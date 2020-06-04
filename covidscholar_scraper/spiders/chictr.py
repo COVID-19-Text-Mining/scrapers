@@ -4,51 +4,25 @@ from datetime import datetime
 from urllib.parse import urljoin
 
 import pandas
-import scrapy
-from pymongo import MongoClient, HASHED
+from pymongo import HASHED
 from scrapy import Request
 
+from ._base import BaseSpider
 
-class ChictrSpider(scrapy.Spider):
+
+class ChictrSpider(BaseSpider):
     name = 'chictr'
     allowed_domains = ['www.chictr.org.cn']
 
     # DB specs
-    db = None
-    collection = None
-    paper_fs = None
-    collection_name = 'Scraper_chictr_org_cn'
-
-    def setup_db(self):
-        """Setup database and collection. Ensure indices."""
-        self.db = MongoClient(
-            host=self.settings['MONGO_HOSTNAME'],
-        )[self.settings['MONGO_DB']]
-        self.db.authenticate(
-            name=self.settings['MONGO_USERNAME'],
-            password=self.settings['MONGO_PASSWORD'],
-            source=self.settings['MONGO_AUTHENTICATION_DB']
-        )
-        self.collection = self.db[self.collection_name]
-
-        # Create indices
-        self.collection.create_index([('RegId', HASHED)])
-        self.collection.create_index('CreatedTime')
-
-    def insert_trial(self, trial):
-        meta_dict = {}
-        for key in list(trial):
-            if key[0].islower():
-                meta_dict[key] = trial[key]
-                del trial[key]
-        trial['_scrapy_meta'] = meta_dict
-        trial['last_updated'] = datetime.now()
-
-        self.collection.insert_one(trial)
+    collections_config = {
+        'Scraper_chictr_org_cn': [
+            [('RegId', HASHED)],
+            'CreatedTime'
+        ]
+    }
 
     def start_requests(self):
-        self.setup_db()
-
         yield Request(
             url='http://www.chictr.org.cn/filelisten.aspx',
             callback=self.find_covid_xlsx)
@@ -88,14 +62,12 @@ class ChictrSpider(scrapy.Spider):
             detail_url = row.xpath('./td[4]//a/@onclick').extract_first().strip()
             detail_url = re.search(r"window\.open\s*\(\s*[\"']([^\"']+)", detail_url).group(1)
 
-            exist = False
-            if self.collection.find_one({
-                'RegId': reg_id,
-                'CreatedTime': {'$gte': created_time}
-            }) is not None:
-                exist = True
-
-            if not exist:
+            if not self.has_duplicate(
+                    where='Scraper_chictr_org_cn',
+                    query={
+                        'RegId': reg_id,
+                        'CreatedTime': {'$gte': created_time}
+                    }):
                 yield Request(
                     url=urljoin(response.request.url, detail_url),
                     meta={
@@ -160,4 +132,5 @@ class ChictrSpider(scrapy.Spider):
 
         meta = response.meta
         meta['Data'] = info
-        self.insert_trial(meta)
+
+        self.save_article(meta, to='Scraper_chictr_org_cn')

@@ -1,109 +1,53 @@
 # -*- coding: utf-8 -*-
-import io
 import re
-import traceback
 from datetime import datetime
 
-import gridfs
-import scrapy
 from bs4 import BeautifulSoup
-from pymongo import MongoClient, HASHED
+from pymongo import HASHED
 from scrapy import Request
 from scrapy import Selector
 from scrapy.http import TextResponse
 
+from ._base import BaseSpider
 from ..html_extractor.paragraphs import extract_paragraphs_recursive
-from ..pdf_extractor.paragraphs import extract_paragraphs_pdf_timeout
 
 
-class PublichealthontarioSpider(scrapy.Spider):
+class PublichealthontarioSpider(BaseSpider):
     name = 'publichealthontario'
     allowed_domains = ['publichealthontario.ca']
 
     # DB specs
-    db = None
-    collection = None
-    grid_fs = None
+    collections_config = {
+        'Scraper_publichealthontario': [
+            [('Link', HASHED)],
+            'Date_Created',
+        ]
+    }
+    gridfs_config = {
+        'Scraper_publichealthontario_fs': []
+    }
+
     pdf_parser_version = 'pho_20200423'
-    laparams = {
+    pdf_laparams = {
         'char_margin': 1.0,
         'line_margin': 3.0
     }
 
-    def parse_pdf(self, pdf_data, filename):
-        data = io.BytesIO(pdf_data)
-        try:
-            paragraphs = extract_paragraphs_pdf_timeout(data, laparams=self.laparams, return_dicts=True)
-            return {
-                'pdf_extraction_success': True,
-                'pdf_extraction_plist': paragraphs,
-                'pdf_extraction_exec': None,
-                'pdf_extraction_version': self.pdf_parser_version,
-                'parsed_date': datetime.now(),
-            }
-        except Exception as e:
-            self.logger.exception(f'Cannot parse pdf for file {filename}')
-            exc = f'Failed to extract PDF {filename} {e}' + traceback.format_exc()
-            return {
-                'pdf_extraction_success': False,
-                'pdf_extraction_plist': None,
-                'pdf_extraction_exec': exc,
-                'pdf_extraction_version': self.pdf_parser_version,
-                'parsed_date': datetime.now(),
-            }
-
-    def setup_db(self):
-        """Setup database and collection. Ensure indices."""
-        self.db = MongoClient(
-            host=self.settings['MONGO_HOSTNAME'],
-        )[self.settings['MONGO_DB']]
-        self.db.authenticate(
-            name=self.settings['MONGO_USERNAME'],
-            password=self.settings['MONGO_PASSWORD'],
-            source=self.settings['MONGO_AUTHENTICATION_DB']
-        )
-        self.collection = self.db['Scraper_publichealthontario']
-        self.collection.create_index([('Link', HASHED)])
-        self.collection.create_index('Date_Created')
-
-        self.grid_fs = gridfs.GridFS(self.db, collection='Scraper_publichealthontario_fs')
-
     def start_requests(self):
-        self.setup_db()
-
         yield Request(
-            url='https://www.publichealthontario.ca/en/diseases-and-conditions/infectious-diseases/respiratory-diseases/novel-coronavirus/articles',
+            url='https://www.publichealthontario.ca/en/diseases-and-conditions/'
+                'infectious-diseases/respiratory-diseases/novel-coronavirus/articles',
             callback=self.parse)
 
     def save_object(self, result):
-        pdf_bytes = result['pdf_bytes']
+        result['PDF_gridfs_id'] = self.save_pdf(
+            pdf_bytes=result['pdf_bytes'],
+            pdf_fn=re.sub(r'[^a-zA-Z0-9]', '-', result['Title']) + '.pdf',
+            pdf_link=result['Link'],
+            fs='Scraper_publichealthontario_fs')
         del result['pdf_bytes']
 
-        pdf_fn = re.sub(r'[^a-zA-Z0-9]', '-', result['Title']) + '.pdf'
-        parsing_result = self.parse_pdf(pdf_bytes, pdf_fn)
-        meta = parsing_result.copy()
-        meta.update({
-            'filename': pdf_fn,
-            'page_link': result['Link'],
-        })
-
-        file_id = self.grid_fs.put(
-            pdf_bytes, **meta)
-        result['PDF_gridfs_id'] = file_id
-
-        meta_dict = {}
-        for key in list(result):
-            if key[0].islower():
-                meta_dict[key] = result[key]
-                del result[key]
-        result['_scrapy_meta'] = meta_dict
-        result['last_updated'] = datetime.now()
-
-        self.collection.update(
-            {'Link': result['Link']},
-            result,
-            upsert=True
-        )
+        self.save_article(result, to='Scraper_publichealthontario')
 
     @staticmethod
     def find_abstract_by_parsing(content):
@@ -171,35 +115,35 @@ class PublichealthontarioSpider(scrapy.Spider):
                     '//td[1]').extract_first()).group(0)
             except AttributeError:
                 continue
-            authors = Selector(text=row).xpath(
-                '//td[2]/p/text()[1]').extract_first() or \
-                      Selector(text=row).xpath(
-                          '//td[2]/text()[1]').extract_first()
-            title = Selector(text=row).xpath(
-                '//td[2]/p/strong/text()').extract_first() or \
-                    Selector(text=row).xpath(
-                        '//td[2]/strong/text()').extract_first()
-            journal = Selector(text=row).xpath(
-                '//td[2]/p/text()[2]').extract_first() or \
-                      Selector(text=row).xpath(
-                          '//td[2]/text()[2]').extract_first()
-            link = Selector(text=row).xpath(
-                '//td[2]/p/a/@href').extract_first() or \
-                   Selector(text=row).xpath(
-                       '//td[2]/a/@href').extract_first()
-            desc = Selector(text=row).xpath(
-                '//td[3]/p/text()').extract_first() or \
-                   Selector(text=row).xpath(
-                       '//td[3]/text()').extract_first()
-            synopsis = Selector(text=row).xpath(
-                '//td[4]/p/a/@href').extract_first() or \
+            authors = (Selector(text=row).xpath(
+                '//td[2]/p/text()[1]').extract_first() or
                        Selector(text=row).xpath(
-                           '//td[4]/a/@href').extract_first()
+                           '//td[2]/text()[1]').extract_first())
+            title = (Selector(text=row).xpath(
+                '//td[2]/p/strong/text()').extract_first() or
+                     Selector(text=row).xpath(
+                         '//td[2]/strong/text()').extract_first())
+            journal = (Selector(text=row).xpath(
+                '//td[2]/p/text()[2]').extract_first() or
+                       Selector(text=row).xpath(
+                           '//td[2]/text()[2]').extract_first())
+            link = (Selector(text=row).xpath(
+                '//td[2]/p/a/@href').extract_first() or
+                    Selector(text=row).xpath(
+                        '//td[2]/a/@href').extract_first())
+            desc = (Selector(text=row).xpath(
+                '//td[3]/p/text()').extract_first() or
+                    Selector(text=row).xpath(
+                        '//td[3]/text()').extract_first())
+            synopsis = (Selector(text=row).xpath(
+                '//td[4]/p/a/@href').extract_first() or
+                        Selector(text=row).xpath(
+                            '//td[4]/a/@href').extract_first())
 
             if synopsis is None:
                 continue
 
-            old_items = self.collection.find({'Link': link})
+            old_items = self.get_col('Scraper_publichealthontario').find({'Link': link})
             insert = True
             for item in old_items:
                 old_date = item['Date_Created'] or 'January 01, 1970'

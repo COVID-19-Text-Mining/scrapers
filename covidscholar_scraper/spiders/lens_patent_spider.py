@@ -3,32 +3,21 @@ import datetime
 from urllib.parse import urlencode, urljoin
 
 import scrapy
-from pymongo import MongoClient, HASHED
+from pymongo import HASHED
 from scrapy.utils.markup import remove_tags
 
+from ._base import BaseSpider
 
-class PatentSpider(scrapy.Spider):
+
+class PatentSpider(BaseSpider):
     name = "lens_patent_spider"
 
-    db = None
-    collection_name = 'Scraper_lens_patents'
-    collection = None
-
-    def setup_db(self):
-        """Setup database and collection. Ensure indices."""
-        self.db = MongoClient(
-            host=self.settings['MONGO_HOSTNAME'],
-        )[self.settings['MONGO_DB']]
-        self.db.authenticate(
-            name=self.settings['MONGO_USERNAME'],
-            password=self.settings['MONGO_PASSWORD'],
-            source=self.settings['MONGO_AUTHENTICATION_DB']
-        )
-        self.collection = self.db[self.collection_name]
-
-        # Create indices
-        self.collection.create_index([('Lens_ID', HASHED)])
-        self.collection.create_index('Published_Date')
+    collections_config = {
+        'Scraper_lens_patents': [
+            [('Lens_ID', HASHED)],
+            'Published_Date',
+        ]
+    }
 
     @staticmethod
     def build_lens_url(**kwargs):
@@ -46,32 +35,19 @@ class PatentSpider(scrapy.Spider):
         query_dict.update(kwargs)
         return '%s?%s' % (base_url, urlencode(query_dict))
 
-    def insert_patent(self, patent):
-        meta_dict = {}
-        for key in list(patent):
-            if key[0].islower():
-                meta_dict[key] = patent[key]
-                del patent[key]
-        patent['_scrapy_meta'] = meta_dict
-        patent['Last_Updated'] = datetime.datetime.now()
-
-        self.collection.update(
-            {'Lens_ID': patent['Lens_ID']},
-            patent,
-            upsert=True
-        )
-
     def start_requests(self):
-        self.setup_db()
         today = datetime.datetime.now().strftime("%Y%m%d")
 
         yield scrapy.Request(
-            url=self.build_lens_url(dates=f"+pub_date:20200101-{today}"),
+            url=self.build_lens_url(
+                dates=f"+pub_date:20200101-{today}"),
             callback=self.parse,
             dont_filter=True)
 
     def parse(self, response):
         patents_this_page = response.xpath('//*[contains(@class, "div-table-results-row")]')
+        published_date = datetime.datetime(year=2000, month=1, day=1)
+
         for patent in patents_this_page:
             publication_number = ''.join(
                 patent.xpath(
@@ -117,9 +93,9 @@ class PatentSpider(scrapy.Spider):
 
             abstract_link = "https://www.lens.org/lens/patent/%s" % (lens_id,)
 
-            exists = self.collection.find_one(
-                {'Lens_ID': lens_id}) is not None
-            if exists:
+            if self.has_duplicate(
+                    where='Scraper_lens_patents',
+                    query={'Lens_ID': lens_id}):
                 continue
 
             yield scrapy.Request(
@@ -183,11 +159,12 @@ class PatentSpider(scrapy.Spider):
                 meta=meta,
             )
         else:
-            self.insert_patent(meta)
+            meta['Last_Updated'] = datetime.datetime.now()
+            self.save_article(meta, to='Scraper_lens_patents')
 
     def parse_full_text(self, response):
         fulltext = response.xpath('.//div[@id="fullText"]').extract_first().strip()
         meta = response.meta
         meta['Full_Text'] = fulltext
-
-        self.insert_patent(meta)
+        meta['Last_Updated'] = datetime.datetime.now()
+        self.save_article(meta, to='Scraper_lens_patents')

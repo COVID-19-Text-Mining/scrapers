@@ -7,17 +7,23 @@ from datetime import datetime
 
 import numpy as np
 import pandas as pd
-import scrapy
-from pymongo import MongoClient
 from scrapy import Request, Selector
 
+from ._base import BaseSpider
 
-class Cord19Spider(scrapy.Spider):
+
+class Cord19Spider(BaseSpider):
     name = 'cord_19'
     allowed_domains = ['semanticscholar.org']
 
     # DB specs
-    db = None
+    collections_config = {
+        'CORD_comm_use_subset': [],
+        'CORD_noncomm_use_subset': [],
+        'CORD_biorxiv_medrxiv': [],
+        'CORD_custom_license': [],
+        'CORD_metadata': [],
+    }
     subset_collection_map = {
         'comm_use_subset': 'CORD_comm_use_subset',
         'noncomm_use_subset': 'CORD_noncomm_use_subset',
@@ -26,20 +32,7 @@ class Cord19Spider(scrapy.Spider):
         'metadata': 'CORD_metadata',
     }
 
-    def setup_db(self):
-        """Setup database and collection. Ensure indices."""
-        self.db = MongoClient(
-            host=self.settings['MONGO_HOSTNAME'],
-        )[self.settings['MONGO_DB']]
-        self.db.authenticate(
-            name=self.settings['MONGO_USERNAME'],
-            password=self.settings['MONGO_PASSWORD'],
-            source=self.settings['MONGO_AUTHENTICATION_DB']
-        )
-
     def start_requests(self):
-        self.setup_db()
-
         data_files = [
             (
                 'comm_use_subset',
@@ -96,7 +89,7 @@ class Cord19Spider(scrapy.Spider):
         archive = tarfile.TarFile(fileobj=gzipfile, mode='r')
 
         content_type = response.meta['content_type']
-        collection = self.db[self.subset_collection_map[content_type]]
+        collection = self.get_col(self.subset_collection_map[content_type])
 
         for file in archive.getmembers():
             path = file.name
@@ -178,11 +171,10 @@ class Cord19Spider(scrapy.Spider):
         collection = self.db[self.subset_collection_map[content_type]]
 
         for i in range(len(df)):
-            data = correct_pd_dict(df.iloc[i].to_dict())
+            data = dict(correct_pd_dict(df.iloc[i].to_dict()))
 
             insert = True
 
-            # FIXME: fetch the last one
             old_docs = collection.find({'cord_uid': data['cord_uid']}).sort('last_updated', -1)
             for old_doc in old_docs:
                 old_doc = {x: old_doc.get(x, None) for x in data}

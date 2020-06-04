@@ -1,43 +1,31 @@
 from urllib.parse import urljoin
 
-import scrapy
-from pymongo import MongoClient, HASHED
+from pymongo import HASHED
 from scrapy import Request
 
+from ._base import BaseSpider
 
-class BiorxivVersionTrackerSpider(scrapy.Spider):
+
+class BiorxivVersionTrackerSpider(BaseSpider):
     name = 'biorxiv_version_tracker'
     allowed_domains = ['biorxiv.org', 'medrxiv.org']
 
     # DB specs
-    db = None
-    collection = None
-    collection_name = 'Scraper_connect_biorxiv_org'
-    tracker_collection = None
-    tracker_collection_name = 'Scraper_connect_biorxiv_org_new_versions'
-
-    def setup_db(self):
-        """Setup database and collection. Ensure indices."""
-        self.db = MongoClient(
-            host=self.settings['MONGO_HOSTNAME'],
-        )[self.settings['MONGO_DB']]
-        self.db.authenticate(
-            name=self.settings['MONGO_USERNAME'],
-            password=self.settings['MONGO_PASSWORD'],
-            source=self.settings['MONGO_AUTHENTICATION_DB']
-        )
-        self.collection = self.db[self.collection_name]
-        self.tracker_collection = self.db[self.tracker_collection_name]
-
-        self.tracker_collection.create_index([('Doi', HASHED)])
+    collections_config = {
+        'Scraper_connect_biorxiv_org': [],
+        'Scraper_connect_biorxiv_org_new_versions': [
+            [('Doi', HASHED)],
+        ],
+    }
 
     def start_requests(self):
-        self.setup_db()
-
         per_doi = {}
-        for document in self.collection.find():
-            if self.tracker_collection.find_one({'Doi': document['Doi']}) is not None:
+        for document in self.get_col('Scraper_connect_biorxiv_org').find():
+            if self.has_duplicate(
+                    'Scraper_connect_biorxiv_org_new_versions',
+                    {'Doi': document['Doi']}):
                 continue
+
             if document['Doi'] in per_doi:
                 update_date, doc = per_doi[document['Doi']]
                 if update_date >= document['last_updated']:
@@ -81,4 +69,4 @@ class BiorxivVersionTrackerSpider(scrapy.Spider):
                 'Publication_Date': response.meta['Publication_Date'],
                 'Origin': response.meta['Origin']
             }
-            self.tracker_collection.insert_one(new_job)
+            self.get_col('Scraper_connect_biorxiv_org_new_versions').insert_one(new_job)
