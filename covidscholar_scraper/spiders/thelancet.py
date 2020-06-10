@@ -1,10 +1,7 @@
 import io
 import json
 import re
-import urllib.parse
-import zipfile
 
-import dateutil.parser
 from pymongo import HASHED
 from scrapy import Request
 
