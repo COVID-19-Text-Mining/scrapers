@@ -8,8 +8,10 @@ import scrapy
 from pymongo import MongoClient
 from pymongo.collection import Collection
 from pymongo.database import Database
+from bs4 import BeautifulSoup
 
 from ..pdf_extractor.paragraphs import extract_paragraphs_pdf_timeout
+from ..html_extractor.paragraphs import extract_paragraphs_recursive
 
 
 class BaseSpider(scrapy.Spider):
@@ -70,6 +72,32 @@ class BaseSpider(scrapy.Spider):
                 'pdf_extraction_version': self.pdf_parser_version,
                 'parsed_date': datetime.now(),
             }
+
+    def find_text_html(self, content, title):
+        # Parse the HTML
+        paragraphs = extract_paragraphs_recursive(BeautifulSoup(content, features='html.parser'))
+
+        def find_section(obj):
+            if isinstance(obj, dict):
+                if obj['name'] == title:
+                    return list(filter(lambda x: isinstance(x, str), obj['content']))
+                elif isinstance(obj['content'], list):
+                    for i in obj['content']:
+                        r = find_section(i)
+                        if r:
+                            return r
+            elif isinstance(obj, list):
+                for i in obj:
+                    r = find_section(i)
+                    if r:
+                        return r
+
+            return []
+
+        text = find_section(paragraphs)
+        if not isinstance(text, list):
+            text = [text]
+        return text
 
     def save_article(self, article: dict, to: Union[Collection, str]):
         """

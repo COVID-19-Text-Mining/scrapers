@@ -1,52 +1,34 @@
 import io
 import json
 import re
-import traceback
-from datetime import datetime
 
-import scrapy
-from pymongo import MongoClient, HASHED
+from pymongo import HASHED
 from scrapy import Request
-from bs4 import BeautifulSoup
 
-from ..html_extractor.paragraphs import extract_paragraphs_recursive
+from ._base import BaseSpider
 
 
-class ThelancetSpider(scrapy.Spider):
+class ThelancetSpider(BaseSpider):
     name = 'thelancet'
-    url = 'https://www.thelancet.com/coronavirus/archive?startPage=0#navigation'
 
     # DB specs
-    db = None
-    collection = None
-    paper_fs = None
-    collection_name = 'Scraper_thelancet_com'
+    collections_config = {
+        'Scraper_thelancet_com': [
+            [('Doi', HASHED)],
+            [('Title', HASHED)],
+            'Publication_Date',
+        ],
+    }
+
     pdf_parser_version = 'thelancet_20200421'
-    laparams = {
+    pdf_laparams = {
         'char_margin': 3.0,
         'line_margin': 2.5
     }
 
-    def setup_db(self):
-        """Setup database and collection. Ensure indices."""
-        self.db = MongoClient(
-            host=self.settings['MONGO_HOSTNAME'],
-        )[self.settings['MONGO_DB']]
-        self.db.authenticate(
-            name=self.settings['MONGO_USERNAME'],
-            password=self.settings['MONGO_PASSWORD'],
-            source=self.settings['MONGO_AUTHENTICATION_DB']
-        )
-        self.collection = self.db[self.collection_name]
-
-        # Create indices
-        self.collection.create_index([('Doi', HASHED)])
-        self.collection.create_index([('Title', HASHED)])
-        self.collection.create_index('Publication_Date')
+    url = 'https://www.thelancet.com/coronavirus/archive?startPage=0#navigation'
 
     def start_requests(self):
-        self.setup_db()
-
         yield Request(
             url=self.url,
             callback=self.parse,
@@ -65,8 +47,9 @@ class ThelancetSpider(scrapy.Spider):
         titles = [h2.xpath('string(a)').get() for h2 in response.xpath('//body//div[@class="articleTitle"]/h2')]
 
         for article_number in range(0, len(links)):
-            if self.collection.find_one(
-                    {'Title': titles[article_number], 'Publication_Date': publish_dates[article_number]}) is None:
+            if not self.has_duplicate(
+                    'Scraper_thelancet_com',
+                    {'Title': titles[article_number], 'Publication_Date': publish_dates[article_number]}):
                 meta['Title'] = titles[article_number]
                 meta['Journal'] = 'thelancet'
                 meta['Origin'] = 'All coronavirus articles from thelancet'
@@ -81,47 +64,9 @@ class ThelancetSpider(scrapy.Spider):
         if next_page is not None:
             yield response.follow(next_page, callback=self.parse, meta={ 'dont_obey_robotstxt': True})
 
-    @staticmethod
-    def find_text_html(content, title):
-        # Parse the HTML
-        paragraphs = extract_paragraphs_recursive(BeautifulSoup(content, features='html.parser'))
-
-        def find_section(obj):
-            if isinstance(obj, dict):
-                if obj['name'] == title:
-                    return list(filter(lambda x: isinstance(x, str), obj['content']))
-                elif isinstance(obj['content'], list):
-                    for i in obj['content']:
-                        r = find_section(i)
-                        if r:
-                            return r
-            elif isinstance(obj, list):
-                for i in obj:
-                    r = find_section(i)
-                    if r:
-                        return r
-
-            return []
-
-        text = find_section(paragraphs)
-        if not isinstance(text, list):
-            text = [text]
-        return text
-
-    def insert_article(self, article):
-        meta_dict = {}
-        for key in list(article):
-            if key[0].islower():
-                meta_dict[key] = article[key]
-                del article[key]
-        article['_scrapy_meta'] = meta_dict
-        article['last_updated'] = datetime.now()
-
-        self.collection.insert_one(article)
-
     def parse_article(self, response):
         meta = response.meta
         meta['Doi'] = response.xpath('//body//div[@class="inline-it"]//a/text()').extract_first()
         meta['Authors'] = [{'Name': x} for x in response.xpath('//body//li[@class="loa__item author"]/div[@class="dropBlock article-header__info"]/a/text()').extract()]
         meta['Text'] = self.find_text_html(response.text, meta['Title'])
-        self.insert_article(meta)
+        self.save_article(meta, to='Scraper_thelancet_com')
