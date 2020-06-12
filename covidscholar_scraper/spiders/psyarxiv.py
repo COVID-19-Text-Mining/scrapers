@@ -1,80 +1,41 @@
-import io
 import json
 import re
-import traceback
-from datetime import datetime
 
 import dateutil.parser
-import gridfs
 import scrapy
-from pymongo import MongoClient, HASHED
+from pymongo import HASHED
 from scrapy import Request
 from scrapy.http import JsonRequest
 
-from ..pdf_extractor.paragraphs import extract_paragraphs_pdf_timeout
+from ._base import BaseSpider
 
 
-class PsyarxivSpider(scrapy.Spider):
+class PsyarxivSpider(BaseSpider):
     name = 'psyarxiv'
-    url = 'https://share.osf.io/api/v2/search/creativeworks/_search'
 
     # DB specs
-    db = None
-    collection = None
-    paper_fs = None
-    collection_name = 'Scraper_share_osf_io'
+    collections_config = {
+        'Scraper_share_osf_io': [
+            [('Doi', HASHED)],
+            [('Title', HASHED)],
+            'Publication_Date',
+        ],
+    }
+    gridfs_config = {
+        'Scraper_share_osf_io_fs': [],
+    }
+
     pdf_parser_version = 'psyarxiv_20200421'
-    laparams = {
+    pdf_laparams = {
         'char_margin': 3.0,
         'line_margin': 2.5
     }
+
+    url = 'https://share.osf.io/api/v2/search/creativeworks/_search'
+
     post_params = {"query":{"bool":{"must":{"query_string":{"query":"*"}},"filter":[{"term":{"sources":"PsyArXiv"}},{"term":{"type":"preprint"}}]}},"from":0,"aggregations":{"sources":{"terms":{"field":"sources","size":500}}}}
 
-    def parse_pdf(self, pdf_data, filename):
-        data = io.BytesIO(pdf_data)
-        try:
-            paragraphs = extract_paragraphs_pdf_timeout(data, laparams=self.laparams, return_dicts=True)
-            return {
-                'pdf_extraction_success': True,
-                'pdf_extraction_plist': paragraphs,
-                'pdf_extraction_exec': None,
-                'pdf_extraction_version': self.pdf_parser_version,
-                'parsed_date': datetime.now(),
-            }
-        except Exception as e:
-            self.logger.exception(f'Cannot parse pdf for file {filename}')
-            exc = f'Failed to extract PDF {filename} {e}' + traceback.format_exc()
-            return {
-                'pdf_extraction_success': False,
-                'pdf_extraction_plist': None,
-                'pdf_extraction_exec': exc,
-                'pdf_extraction_version': self.pdf_parser_version,
-                'parsed_date': datetime.now(),
-            }
-
-    def setup_db(self):
-        """Setup database and collection. Ensure indices."""
-        self.db = MongoClient(
-            host=self.settings['MONGO_HOSTNAME'],
-        )[self.settings['MONGO_DB']]
-        self.db.authenticate(
-            name=self.settings['MONGO_USERNAME'],
-            password=self.settings['MONGO_PASSWORD'],
-            source=self.settings['MONGO_AUTHENTICATION_DB']
-        )
-        self.collection = self.db[self.collection_name]
-
-        # Create indices
-        self.collection.create_index([('Doi', HASHED)])
-        self.collection.create_index([('Title', HASHED)])
-        self.collection.create_index('Publication_Date')
-
-        # Grid FS
-        self.paper_fs = gridfs.GridFS(self.db, collection=self.collection_name + '_fs')
-
     def start_requests(self):
-        self.setup_db()
-
         yield JsonRequest(
             url=self.url,
             data=self.post_params,
@@ -111,8 +72,9 @@ class PsyarxivSpider(scrapy.Spider):
                 continue
             psyarxiv_preprint_id = re.split('[ /]', psyarxiv_link)[3]
 
-            if self.collection.find_one(
-                    {'Title': item['_source']['title'], 'Publication_Date': pubdate}) is None:
+            if not self.has_duplicate(
+                    'Scraper_share_osf_io',
+                    {'Title': item['_source']['title'], 'Publication_Date': pubdate}):
                 meta['Title'] = item['_source']['title']
                 meta['Journal'] = 'psyarxiv'
                 meta['Origin'] = 'All preprints from psyarxiv rss feed'
@@ -125,34 +87,22 @@ class PsyarxivSpider(scrapy.Spider):
                     meta=meta
                 )
 
-    def insert_article(self, article):
-        meta_dict = {}
-        for key in list(article):
-            if key[0].islower():
-                meta_dict[key] = article[key]
-                del article[key]
-        article['_scrapy_meta'] = meta_dict
-        article['last_updated'] = datetime.now()
-
-        self.collection.insert_one(article)
-
     def handle_pdf(self, response):
-        result = response.meta
-        pdf_fn = result['Doi'].replace('/', '-') + '.pdf'
-
         pdf_data = response.body
-        parsing_result = self.parse_pdf(pdf_data, pdf_fn)
-        meta = parsing_result.copy()
-        meta.update({
-            'filename': pdf_fn,
-            'manager_collection': self.collection_name,
-            'page_link': result['Link'],
-        })
-        file_id = self.paper_fs.put(pdf_data, **meta)
+        pdf_link = response.request.url
+        article = response.meta
+        if pdf_data is not None:
+            file_id = self.save_pdf(
+                pdf_bytes=pdf_data,
+                pdf_fn=article['Doi'].replace('/', '-') + '.pdf',
+                pdf_link=pdf_link,
+                fs='Scraper_share_osf_io_fs',
+            )
+        else:
+            file_id = None
 
-        result['PDF_gridfs_id'] = file_id
-
-        self.insert_article(result)
+        article['PDF_gridfs_id'] = file_id
+        self.save_article(article, to='Scraper_share_osf_io')
 
     def parse_article(self, response):
         meta = response.meta
