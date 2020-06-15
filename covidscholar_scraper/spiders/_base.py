@@ -142,6 +142,7 @@ class BaseSpider(scrapy.Spider):
         """
         Check for duplicate items using a query.
         If any returned result matches the comparator, return True.
+        If the comparator is None, just check for the existence of the document.
 
         :param where: The collection to check in.
         :param query: The mongo query to make.
@@ -153,12 +154,10 @@ class BaseSpider(scrapy.Spider):
         if results.count() == 0:
             return False
 
-        for i in results:
-            if comparator:
-                if comparator(i):
-                    return True
-            else:
-                return True
+        if comparator is None:
+            return results.count() > 0
+
+        return any(map(comparator, results))
 
     def get_col(self, name):
         self.setup_db()
