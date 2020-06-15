@@ -1,5 +1,6 @@
 from urllib.parse import urljoin
 
+import sentry_sdk
 from pymongo import HASHED
 from scrapy import Request
 
@@ -69,4 +70,10 @@ class BiorxivVersionTrackerSpider(BaseSpider):
                 'Publication_Date': response.meta['Publication_Date'],
                 'Origin': response.meta['Origin']
             }
+
+            with sentry_sdk.push_scope() as scope:
+                scope.set_extra('DOI', response.meta['Doi'])
+                sentry_sdk.capture_message('Scraper biorxiv: Updating article')
+            sentry_sdk.flush()
+
             self.get_col('Scraper_connect_biorxiv_org_new_versions').insert_one(new_job)

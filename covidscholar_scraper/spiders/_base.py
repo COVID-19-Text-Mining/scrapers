@@ -5,13 +5,14 @@ from typing import Dict, Union, Optional
 
 import gridfs
 import scrapy
+import sentry_sdk
+from bs4 import BeautifulSoup
 from pymongo import MongoClient
 from pymongo.collection import Collection
 from pymongo.database import Database
-from bs4 import BeautifulSoup
 
-from ..pdf_extractor.paragraphs import extract_paragraphs_pdf_timeout
 from ..html_extractor.paragraphs import extract_paragraphs_recursive
+from ..pdf_extractor.paragraphs import extract_paragraphs_pdf_timeout
 
 
 class BaseSpider(scrapy.Spider):
@@ -26,6 +27,14 @@ class BaseSpider(scrapy.Spider):
         self.db: Database = None
         self.collections: Dict[str, Collection] = {}
         self.gridfs: Dict[str, gridfs.GridFS] = {}
+
+    def closed(self, reason):
+        if self.settings['SENTRY_DSN']:
+            with sentry_sdk.push_scope() as scope:
+                scope.set_extra("reason", reason)
+                sentry_sdk.capture_message('Scraper %s finished' % (self.name,))
+
+            sentry_sdk.flush()
 
     @property
     def collections_config(self) -> dict:
@@ -99,24 +108,33 @@ class BaseSpider(scrapy.Spider):
             text = [text]
         return text
 
-    def save_article(self, article: dict, to: Union[Collection, str]):
+    def save_article(self, article: dict, to: Union[Collection, str], has_meta=True):
         """
         Save a processed article. Capitalized fields will be saved as is.
         Others will be treated as scrapy meta.
 
         :param article: The processed article item.
         :param to: The collection to save to.
+        :param has_meta: Whether the article has scrapy meta info.
         :return:
         """
-        meta_dict = {}
-        for key in list(article):
-            if key[0].islower():
-                meta_dict[key] = article[key]
-                del article[key]
-        article['_scrapy_meta'] = meta_dict
+        if has_meta:
+            meta_dict = {}
+            for key in list(article):
+                if key[0].islower():
+                    meta_dict[key] = article[key]
+                    del article[key]
+            article['_scrapy_meta'] = meta_dict
+
         article['last_updated'] = datetime.now()
 
-        self.get_col(to).insert_one(article)
+        result = self.get_col(to).insert_one(article)
+
+        if self.settings['SENTRY_DSN']:
+            with sentry_sdk.push_scope() as scope:
+                scope.set_extra('item_id', str(result.inserted_id))
+                sentry_sdk.capture_message('Scraper %s: Article download' % (self.name,))
+            sentry_sdk.flush()
 
     def save_pdf(self, pdf_bytes, pdf_fn, pdf_link, fs: Union[gridfs.GridFS, str]):
         """
@@ -135,6 +153,14 @@ class BaseSpider(scrapy.Spider):
             'page_link': pdf_link,
         })
         file_id = self.get_gridfs(fs).put(pdf_bytes, **meta)
+
+        if self.settings['SENTRY_DSN']:
+            with sentry_sdk.push_scope() as scope:
+                scope.set_extra('filename', pdf_fn)
+                scope.set_extra('page_link', pdf_link)
+                scope.set_extra('file_id', str(file_id))
+                sentry_sdk.capture_message('Scraper %s: PDF download' % (self.name,))
+            sentry_sdk.flush()
 
         return file_id
 

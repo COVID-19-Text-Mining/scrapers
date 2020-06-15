@@ -112,11 +112,7 @@ class Cord19Spider(BaseSpider):
 
             if insert:
                 self.logger.info("Insert paper with id %s", paper_id)
-                data.update({
-                    'last_updated': datetime.now(),
-                    # '_additional_flags': additional_annotation,
-                })
-                collection.insert_one(data)
+                self.save_article(article=data, to=collection, has_meta=False)
 
     def parse_csv(self, response):
         def correct_pd_dict(input_dict):

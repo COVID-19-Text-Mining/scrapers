@@ -1,5 +1,4 @@
 import json
-from datetime import datetime
 from json import JSONDecodeError
 
 from pymongo import HASHED
@@ -37,8 +36,8 @@ class ZenodoSpider(BaseSpider):
                 continue
 
             has_new_element = True
-            item['last_updated'] = datetime.now()
-            self.get_col('Scraper_zenodo_org').insert(item)
+
+            self.save_article(item, to='Scraper_zenodo_org', has_meta=False)
 
         if has_new_element and 'next' in data['links']:
             yield Request(

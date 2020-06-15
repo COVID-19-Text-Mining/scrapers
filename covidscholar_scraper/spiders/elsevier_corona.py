@@ -41,13 +41,13 @@ class ElsevierCoronaSpider(BaseSpider):
         data = io.BytesIO()
         connection.getfo(filename, data)
 
-        self.get_col('Elsevier_corona_meta').insert_one({
+        self.save_article(article={
             'paper_id': paper_id,
             'version': int(time.time()),
             'atime': atime,
             'mtime': mtime,
             'meta': data.getvalue().decode()
-        })
+        }, to='Elsevier_corona_meta')
 
     def handle_xml(self, fileattrs, connection):
         filename = fileattrs.filename
@@ -67,14 +67,14 @@ class ElsevierCoronaSpider(BaseSpider):
         data = io.BytesIO()
         connection.getfo(filename, data)
 
-        self.get_col('Elsevier_corona_xml').insert_one({
+        self.save_article(article={
             'paper_id': paper_id,
             'version': int(time.time()),
             'atime': atime,
             'mtime': mtime,
             'last_updated': mtime,
             'xml': data.getvalue().decode()
-        })
+        }, to='Elsevier_corona_xml')
 
     def scrape_meta(self, connection):
         with connection.cd('meta'):
