@@ -77,10 +77,14 @@ class Scheduler(object):
 
     def poll_jobs(self):
         for name in self.running:
-            if self.running[name] is not None and not self.running[name].is_alive():
-                self.running[name].join()
-                print(f'Job {name} finished.')
-                self.running[name] = None
+            if self.running[name] is not None:
+                if self.running[name].is_alive():
+                    # Push back execution
+                    self.timer[name] = self.jobs[name]
+                else:
+                    self.running[name].join()
+                    print(f'Job {name} finished.')
+                    self.running[name] = None
 
     def reset_job(self, name):
         print(f'Scheduling job "{name}" to be run in {self.jobs[name]} seconds...')
