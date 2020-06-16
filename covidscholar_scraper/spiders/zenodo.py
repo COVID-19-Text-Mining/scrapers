@@ -37,7 +37,7 @@ class ZenodoSpider(BaseSpider):
 
             has_new_element = True
 
-            self.save_article(item, to='Scraper_zenodo_org', has_meta=False)
+            self.save_article(item, to='Scraper_zenodo_org', push_lowercase_to_meta=False)
 
         if has_new_element and 'next' in data['links']:
             yield Request(

@@ -47,7 +47,7 @@ class ElsevierCoronaSpider(BaseSpider):
             'atime': atime,
             'mtime': mtime,
             'meta': data.getvalue().decode()
-        }, to='Elsevier_corona_meta')
+        }, to='Elsevier_corona_meta', push_lowercase_to_meta=False)
 
     def handle_xml(self, fileattrs, connection):
         filename = fileattrs.filename
@@ -74,7 +74,7 @@ class ElsevierCoronaSpider(BaseSpider):
             'mtime': mtime,
             'last_updated': mtime,
             'xml': data.getvalue().decode()
-        }, to='Elsevier_corona_xml')
+        }, to='Elsevier_corona_xml', push_lowercase_to_meta=False)
 
     def scrape_meta(self, connection):
         with connection.cd('meta'):

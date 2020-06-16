@@ -73,7 +73,7 @@ class EngrxivSpider(BaseSpider):
 
             has_new_element = True
 
-            self.save_article(item, to='Scraper_engrxiv', has_meta=False)
+            self.save_article(item, to='Scraper_engrxiv', push_lowercase_to_meta=False)
 
         if has_new_element and response.meta['from'] + len(data['hits']['hits']) < data['hits']['total']:
             yield self.make_request(response.meta['from'] + len(data['hits']['hits']))

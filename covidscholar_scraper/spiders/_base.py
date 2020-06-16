@@ -108,17 +108,17 @@ class BaseSpider(scrapy.Spider):
             text = [text]
         return text
 
-    def save_article(self, article: dict, to: Union[Collection, str], has_meta=True):
+    def save_article(self, article: dict, to: Union[Collection, str], push_lowercase_to_meta=True):
         """
         Save a processed article. Capitalized fields will be saved as is.
         Others will be treated as scrapy meta.
 
         :param article: The processed article item.
         :param to: The collection to save to.
-        :param has_meta: Whether the article has scrapy meta info.
+        :param push_lowercase_to_meta: Whether the lower case keys should be pushed into meta document.
         :return:
         """
-        if has_meta:
+        if push_lowercase_to_meta:
             meta_dict = {}
             for key in list(article):
                 if key[0].islower():
