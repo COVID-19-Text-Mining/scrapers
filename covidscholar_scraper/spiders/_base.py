@@ -11,7 +11,7 @@ from pymongo import MongoClient
 from pymongo.collection import Collection
 from pymongo.database import Database
 
-from ..html_extractor.paragraphs import extract_paragraphs_recursive
+from ..html_extractor.paragraphs import extract_paragraphs_recursive, get_tag_text
 from ..pdf_extractor.paragraphs import extract_paragraphs_pdf_timeout
 
 
@@ -82,7 +82,13 @@ class BaseSpider(scrapy.Spider):
                 'parsed_date': datetime.now(),
             }
 
-    def find_text_html(self, content, title):
+    @staticmethod
+    def get_all_text_html(html_string):
+        soup = BeautifulSoup(html_string, features='html.parser')
+        return get_tag_text(soup)
+
+    @staticmethod
+    def find_text_html(content, title):
         # Parse the HTML
         paragraphs = extract_paragraphs_recursive(BeautifulSoup(content, features='html.parser'))
 

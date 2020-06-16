@@ -115,7 +115,7 @@ class BiorxivSpider(BaseSpider):
         result['Link'] = response.request.url
 
         # Scrape title
-        result['Title'] = response.xpath("//*[contains(@id,'page-title')]/text()").extract_first().strip()
+        result['Title'] = self.get_all_text_html(response.xpath("//*[contains(@id,'page-title')]").extract_first())
 
         # Scrape author list
         authors = []
