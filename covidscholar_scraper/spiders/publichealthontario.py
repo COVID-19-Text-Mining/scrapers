@@ -108,6 +108,14 @@ class PublichealthontarioSpider(BaseSpider):
             priority=12,
         )
 
+    # https://stackoverflow.com/questions/3809401/what-is-a-good-regular-expression-to-match-a-url
+    url_regex = re.compile(
+        r'https?://(?:www\.)?[-a-zA-Z0-9@:%._+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b(?:[-a-zA-Z0-9()@:%_+.~#?&/=]*)')
+
+    @staticmethod
+    def find_urls(string):
+        return PublichealthontarioSpider.url_regex.findall(string)
+
     def parse(self, response):
         for row in response.xpath('//table//tr').extract()[1:]:
             try:
@@ -131,6 +139,13 @@ class PublichealthontarioSpider(BaseSpider):
                 '//td[2]/p/a/@href').extract_first() or
                     Selector(text=row).xpath(
                         '//td[2]/a/@href').extract_first())
+            if link is None:
+                link_text = (Selector(text=row).xpath(
+                    '//td[2]').extract_first() or '')
+                urls = self.find_urls(link_text)
+                if len(urls) > 0:
+                    link = urls[-1]
+
             desc = (Selector(text=row).xpath(
                 '//td[3]/p/text()').extract_first() or
                     Selector(text=row).xpath(
