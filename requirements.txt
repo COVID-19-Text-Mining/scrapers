@@ -6,4 +6,5 @@ pymongo
 PyPDF2
 pysftp
 scrapy
+sentry_sdk
 xlrd
