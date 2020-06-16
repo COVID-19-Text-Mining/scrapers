@@ -33,7 +33,10 @@ class PsyarxivSpider(BaseSpider):
 
     url = 'https://share.osf.io/api/v2/search/creativeworks/_search'
 
-    post_params = {"query":{"bool":{"must":{"query_string":{"query":"*"}},"filter":[{"term":{"sources":"PsyArXiv"}},{"term":{"type":"preprint"}}]}},"from":0,"aggregations":{"sources":{"terms":{"field":"sources","size":500}}}}
+    post_params = {"query":{"bool":{"must":{"query_string":{"query":"title:covid-19 OR description:covid-19 OR title:coronavirus OR description:coronavirus OR title:SARS-CoV-2 OR description:SARS-CoV-2"}},
+        "filter":[{"term":{"sources":"PsyArXiv"}},
+        {"term":{"type":"preprint"}}]}},"from":0,
+        "aggregations":{"sources":{"terms":{"field":"sources","size":500}}}}
 
     def start_requests(self):
         yield JsonRequest(
