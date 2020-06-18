@@ -3,13 +3,50 @@ import io
 import json
 import re
 import tarfile
-from datetime import datetime
+import time
 
 import numpy as np
 import pandas as pd
-from scrapy import Request, Selector
+from pymongo import HASHED
+from scrapy import Request
 
 from ._base import BaseSpider
+
+
+def correct_pd_dict(input_dict):
+    """
+        Correct the encoding of python dictionaries so they can be encoded to mongodb
+        https://stackoverflow.com/questions/30098263/inserting-a-document-with-
+        pymongo-invaliddocument-cannot-encode-object
+        inputs
+        -------
+        input_dict : dictionary instance to add as document
+        output
+        -------
+        output_dict : new dictionary with (hopefully) corrected encodings
+    """
+
+    output_dict = {}
+    for key1, val1 in input_dict.items():
+        # Nested dictionaries
+        if isinstance(val1, dict):
+            val1 = correct_pd_dict(val1)
+
+        if isinstance(val1, np.bool_):
+            val1 = bool(val1)
+
+        if isinstance(val1, np.int64):
+            val1 = int(val1)
+
+        if isinstance(val1, np.float64):
+            val1 = float(val1)
+
+        if isinstance(val1, set):
+            val1 = list(val1)
+
+        output_dict[key1] = val1
+
+    return output_dict
 
 
 class Cord19Spider(BaseSpider):
@@ -18,11 +55,21 @@ class Cord19Spider(BaseSpider):
 
     # DB specs
     collections_config = {
-        'CORD_comm_use_subset': [],
-        'CORD_noncomm_use_subset': [],
-        'CORD_biorxiv_medrxiv': [],
-        'CORD_custom_license': [],
-        'CORD_metadata': [],
+        'CORD_comm_use_subset': [
+            ('paper_id', HASHED)
+        ],
+        'CORD_noncomm_use_subset': [
+            ('paper_id', HASHED)
+        ],
+        'CORD_biorxiv_medrxiv': [
+            ('paper_id', HASHED)
+        ],
+        'CORD_custom_license': [
+            ('paper_id', HASHED)
+        ],
+        'CORD_metadata': [
+            ('cord_uid', HASHED)
+        ],
     }
     subset_collection_map = {
         'comm_use_subset': 'CORD_comm_use_subset',
@@ -36,52 +83,36 @@ class Cord19Spider(BaseSpider):
         data_files = [
             (
                 'comm_use_subset',
-                'https://ai2-semanticscholar-cord-19.s3-us-west-2.amazonaws.com/latest/comm_use_subset.tar.gz'),
-            (
+                'https://ai2-semanticscholar-cord-19.s3-us-west-2.amazonaws.com/latest/comm_use_subset.tar.gz',
+                self.parse_gzip,
+            ), (
                 'noncomm_use_subset',
-                'https://ai2-semanticscholar-cord-19.s3-us-west-2.amazonaws.com/latest/noncomm_use_subset.tar.gz'),
-            (
+                'https://ai2-semanticscholar-cord-19.s3-us-west-2.amazonaws.com/latest/noncomm_use_subset.tar.gz',
+                self.parse_gzip,
+            ), (
                 'custom_license',
-                'https://ai2-semanticscholar-cord-19.s3-us-west-2.amazonaws.com/latest/custom_license.tar.gz'),
-            (
+                'https://ai2-semanticscholar-cord-19.s3-us-west-2.amazonaws.com/latest/custom_license.tar.gz',
+                self.parse_gzip,
+            ), (
                 'biorxiv_medrxiv',
-                'https://ai2-semanticscholar-cord-19.s3-us-west-2.amazonaws.com/latest/biorxiv_medrxiv.tar.gz'),
-            (
+                'https://ai2-semanticscholar-cord-19.s3-us-west-2.amazonaws.com/latest/biorxiv_medrxiv.tar.gz',
+                self.parse_gzip,
+            ), (
                 'metadata',
-                'https://ai2-semanticscholar-cord-19.s3-us-west-2.amazonaws.com/latest/metadata.csv'),
+                'https://ai2-semanticscholar-cord-19.s3-us-west-2.amazonaws.com/latest/metadata.csv',
+                self.parse_csv,
+            ),
         ]
-        for content_type, link in data_files:
-            if link.endswith('.tar.gz'):
-                yield Request(
-                    url=link,
-                    callback=self.parse_gzip,
-                    meta={
-                        'download_maxsize': 0,
-                        'download_warnsize': 0,
-                        'content_type': content_type,
-                    },
-                    dont_filter=True)
-            elif link.endswith('.csv'):
-                yield Request(
-                    url=link,
-                    callback=self.parse_csv,
-                    meta={
-                        'download_maxsize': 0,
-                        'download_warnsize': 0,
-                        'content_type': content_type,
-                    },
-                    dont_filter=True)
-
-    def parse_page(self, response):
-        file_list_html = response.xpath('//ul').extract_first()
-        for url in Selector(text=file_list_html).xpath('//a/@href').extract():
-            if url.endswith('.tar.gz'):
-                yield Request(
-                    url=url,
-                    callback=self.parse_gzip,
-                    meta={'download_maxsize': 0, 'download_warnsize': 0},
-                    dont_filter=True
-                )
+        for content_type, link, method in data_files:
+            yield Request(
+                url=link,
+                callback=method,
+                meta={
+                    'download_maxsize': 0,
+                    'download_warnsize': 0,
+                    'content_type': content_type,
+                },
+                dont_filter=True)
 
     def parse_gzip(self, response):
         fileio = io.BytesIO(response.body)
@@ -113,42 +144,10 @@ class Cord19Spider(BaseSpider):
             if insert:
                 self.logger.info("Insert paper with id %s", paper_id)
                 self.save_article(article=data, to=collection, push_lowercase_to_meta=False)
+                # Sleep 3 secs to slow down insertion.
+                time.sleep(3)
 
     def parse_csv(self, response):
-        def correct_pd_dict(input_dict):
-            """
-                Correct the encoding of python dictionaries so they can be encoded to mongodb
-                https://stackoverflow.com/questions/30098263/inserting-a-document-with-
-                pymongo-invaliddocument-cannot-encode-object
-                inputs
-                -------
-                input_dict : dictionary instance to add as document
-                output
-                -------
-                output_dict : new dictionary with (hopefully) corrected encodings
-            """
-
-            output_dict = {}
-            for key1, val1 in input_dict.items():
-                # Nested dictionaries
-                if isinstance(val1, dict):
-                    val1 = correct_pd_dict(val1)
-
-                if isinstance(val1, np.bool_):
-                    val1 = bool(val1)
-
-                if isinstance(val1, np.int64):
-                    val1 = int(val1)
-
-                if isinstance(val1, np.float64):
-                    val1 = float(val1)
-
-                if isinstance(val1, set):
-                    val1 = list(val1)
-
-                output_dict[key1] = val1
-
-            return output_dict
 
         fileio = io.StringIO(response.body.decode('utf-8'))
 
@@ -164,10 +163,10 @@ class Cord19Spider(BaseSpider):
         df = df.fillna('')
 
         content_type = response.meta['content_type']
-        collection = self.db[self.subset_collection_map[content_type]]
+        collection = self.get_col(self.subset_collection_map[content_type])
 
         for i in range(len(df)):
-            data = dict(correct_pd_dict(df.iloc[i].to_dict()))
+            data = correct_pd_dict(df.iloc[i].to_dict())
 
             insert = True
 
@@ -180,7 +179,6 @@ class Cord19Spider(BaseSpider):
 
             if insert:
                 self.logger.info("Insert paper with cord_uid %s", data['cord_uid'])
-                data.update({
-                    'last_updated': datetime.now(),
-                })
-                collection.insert_one(data)
+                self.save_article(article=data, to=collection, push_lowercase_to_meta=False)
+                # Sleep 3 secs to slow down insertion.
+                time.sleep(3)
