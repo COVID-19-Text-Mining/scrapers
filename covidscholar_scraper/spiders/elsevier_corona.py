@@ -1,10 +1,13 @@
+import gzip
 import io
 import re
 import time
 from datetime import datetime
+from io import BytesIO
 
 import pysftp
 from pymongo import HASHED
+from pymongo.errors import DocumentTooLarge
 
 from ._base import BaseSpider
 
@@ -67,14 +70,29 @@ class ElsevierCoronaSpider(BaseSpider):
         data = io.BytesIO()
         connection.getfo(filename, data)
 
-        self.save_article(article={
-            'paper_id': paper_id,
-            'version': int(time.time()),
-            'atime': atime,
-            'mtime': mtime,
-            'last_updated': mtime,
-            'xml': data.getvalue().decode()
-        }, to='Elsevier_corona_xml', push_lowercase_to_meta=False)
+        try:
+            self.save_article(article={
+                'paper_id': paper_id,
+                'version': int(time.time()),
+                'atime': atime,
+                'mtime': mtime,
+                'last_updated': mtime,
+                'xml': data.getvalue().decode()
+            }, to='Elsevier_corona_xml', push_lowercase_to_meta=False)
+        except DocumentTooLarge:
+            gzipped_string_io = BytesIO()
+            with gzip.GzipFile(fileobj=gzipped_string_io, mode="w") as f:
+                f.write(data.getvalue())
+
+            self.save_article(article={
+                'paper_id': paper_id,
+                'version': int(time.time()),
+                'atime': atime,
+                'mtime': mtime,
+                'last_updated': mtime,
+                'xml': None,
+                'xml_gzipped': gzipped_string_io.getvalue()
+            }, to='Elsevier_corona_xml', push_lowercase_to_meta=False)
 
     def scrape_meta(self, connection):
         with connection.cd('meta'):

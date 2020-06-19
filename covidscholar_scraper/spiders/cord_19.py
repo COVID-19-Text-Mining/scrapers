@@ -56,19 +56,19 @@ class Cord19Spider(BaseSpider):
     # DB specs
     collections_config = {
         'CORD_comm_use_subset': [
-            ('paper_id', HASHED)
+            [('paper_id', HASHED)]
         ],
         'CORD_noncomm_use_subset': [
-            ('paper_id', HASHED)
+            [('paper_id', HASHED)]
         ],
         'CORD_biorxiv_medrxiv': [
-            ('paper_id', HASHED)
+            [('paper_id', HASHED)]
         ],
         'CORD_custom_license': [
-            ('paper_id', HASHED)
+            [('paper_id', HASHED)]
         ],
         'CORD_metadata': [
-            ('cord_uid', HASHED)
+            [('cord_uid', HASHED)]
         ],
     }
     subset_collection_map = {
