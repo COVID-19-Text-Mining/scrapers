@@ -41,8 +41,13 @@ class RetractionDatabaseSpider(BaseSpider):
         )
 
     def parse_retraction_data(self, response):
-        def strip_extract(el, xpath):
-            return list(map(str.strip, el.xpath(xpath).extract()))
+        def strip_extract(el, *xpaths):
+            c = []
+            for xpath in xpaths:
+                c = el.xpath(xpath).extract()
+                if c:
+                    break
+            return list(map(str.strip, c))
 
         for row in response.xpath('//tr[@class="mainrow"]'):
             try:
@@ -62,30 +67,58 @@ class RetractionDatabaseSpider(BaseSpider):
 
                 authors = strip_extract(row, './td[4]/font/a[@class="authorLink"]/text()')
 
-                try:
-                    paper_date, pubmed_id = strip_extract(row, './td[5]/font/text()')
-                    paper_date = datetime.strptime(paper_date, '%m/%d/%Y')
-                except ValueError:
-                    # missing one element, try to guess which one it is.
+                original_paper_info = strip_extract(row, './td[5]/font/text()', './td[5]/text()')
+                if len(original_paper_info) == 2:
+                    paper_date, pubmed_id = original_paper_info
+                elif len(original_paper_info) == 1:
                     try:
-                        paper_date, = strip_extract(row, './td[5]/font/text()')
+                        paper_date, = original_paper_info
                         datetime.strptime('%m/%d/%Y', paper_date)
                         pubmed_id = '00000000'
                     except ValueError:
                         paper_date = None
-                        pubmed_id, = strip_extract(row, './td[5]/font/text()')
+                        pubmed_id, = original_paper_info
+                else:
+                    paper_date = None
+                    pubmed_id = '00000000'
+                if paper_date:
+                    paper_date = datetime.strptime(paper_date, '%m/%d/%Y')
 
                 doi = row.xpath('./td[5]/font/span[@class="rNature"]/text()').extract_first()
                 if doi is not None:
                     doi = doi.strip()
 
-                retraction_date, retraction_pubmed_id = strip_extract(row, './td[6]/font/text()')
-                retraction_doi = row.xpath('./td[6]/font/span[@class="rNature"]/text()').extract_first().strip()
+                retraction_paper_info = strip_extract(row, './td[6]/font/text()')
+                if len(retraction_paper_info) == 2:
+                    retraction_date, retraction_pubmed_id = retraction_paper_info
+                elif len(retraction_paper_info) == 1:
+                    try:
+                        retraction_date, = retraction_paper_info
+                        datetime.strptime('%m/%d/%Y', retraction_date)
+                        retraction_pubmed_id = '00000000'
+                    except ValueError:
+                        retraction_date = None
+                        retraction_pubmed_id, = retraction_paper_info
+                else:
+                    retraction_date = None
+                    retraction_pubmed_id = '00000000'
+                if retraction_date:
+                    retraction_date = datetime.strptime(retraction_date, '%m/%d/%Y')
 
-                article_type = row.xpath('./td[7]/font/text()').extract_first().strip()
-                nature = row.xpath('./td[7]/font/span[@class="rNature"]/text()').extract_first().strip()
+                retraction_doi = row.xpath('./td[6]/font/span[@class="rNature"]/text()').extract_first()
+                if retraction_doi is not None:
+                    retraction_doi = retraction_doi.strip()
 
-                country = row.xpath('./td[8]/font/span[1]/text()').extract_first().strip()
+                article_type = row.xpath('./td[7]/font/text()').extract_first()
+                if article_type:
+                    article_type = article_type.strip()
+                nature = row.xpath('./td[7]/font/span[@class="rNature"]/text()').extract_first()
+                if nature:
+                    nature = nature.strip()
+
+                country = row.xpath('./td[8]/font/span[1]/text()').extract_first()
+                if country:
+                    country = country.strip()
                 paywalled = row.xpath('./td[8]/font/span[1]/span[@class="rPaywalled"]/text()').extract_first()
                 if paywalled is not None:
                     paywalled = paywalled.strip()
@@ -103,7 +136,7 @@ class RetractionDatabaseSpider(BaseSpider):
                         'Doi': doi,
                     },
                     'Retraction_Info': {
-                        'Date': datetime.strptime(retraction_date, '%m/%d/%Y'),
+                        'Date': retraction_date,
                         'PubMed_Id': retraction_pubmed_id,
                         'Doi': retraction_doi,
                     },
@@ -116,10 +149,11 @@ class RetractionDatabaseSpider(BaseSpider):
                 }
                 data.update(response.meta)
 
-                if not self.has_duplicate(
-                        where='Scraper_Retraction_database',
-                        query={'Retraction_Id': retraction_id}):
-                    self.save_article(article=data, to='Scraper_Retraction_database')
+                # print(data)
+                # if not self.has_duplicate(
+                #         where='Scraper_Retraction_database',
+                #         query={'Retraction_Id': retraction_id}):
+                #     self.save_article(article=data, to='Scraper_Retraction_database')
             except Exception as e:
                 row_html = ''.join(row.extract()).replace("\n", " ")
                 self.logger.exception(f'Failed to process row {e}: {row_html}')
