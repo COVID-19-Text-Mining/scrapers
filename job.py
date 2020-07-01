@@ -30,6 +30,7 @@ wheels = [
 ]
 
 jobs_registry = {
+    'scrapy crawl email': 3600,
     'scrapy crawl zenodo': 3600,
     'scrapy crawl engrxiv': 3600,
     'scrapy crawl retraction_database': 3600 * 6,
