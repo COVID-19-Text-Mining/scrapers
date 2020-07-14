@@ -1,6 +1,6 @@
 import re
 import urllib.parse
-
+from urllib.parse import urljoin
 from pymongo import HASHED
 from scrapy import Request
 from datetime import datetime
@@ -28,6 +28,8 @@ class BaseSsrnSpider(BaseSpider):
             query_dict = {
                 'form_name': 'journalBrowse',
                 'journal_id': collection,
+                'orderBy': 'ab_approval_date',
+                'orderDir': 'desc',
             }
             url = 'https://papers.ssrn.com/sol3/JELJOUR_Results.cfm?' + urllib.parse.urlencode(query_dict)
 
@@ -41,11 +43,22 @@ class BaseSsrnSpider(BaseSpider):
             )
 
     def parse_query_result(self, response):
-        ids = response.xpath(
-            "//div[@class='table results papers-list']/div[@class='tbody']/div/div[@class='description']/h3//a[@class='title optClickTitle']/@href").extract()
-        for i in range(0, len(ids)):
+        papers = response.xpath(
+            "//div[contains(@class, 'papers-list')]//div[contains(@class, 'description')]")
+        has_new_papers = False
+        for paper in papers:
+            url = paper.xpath('.//a[contains(@class, "title")]/@href').extract_first()
+            url = urljoin(response.request.url, url)
+
+            paper_id = re.search(r'^https?://papers\.ssrn\.com/sol3/papers\.cfm\?abstract_id=(.*)$', url).group(1)
+            if self.has_duplicate(
+                    'Scraper_papers_ssrn_com',
+                    {'Doi': "10.2139/ssrn.%s" % paper_id}):
+                continue
+
+            has_new_papers = True
             yield Request(
-                url=ids[i],
+                url=url,
                 priority=100,
                 headers={'User-Agent':
                              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.116 Safari/537.36 Edg/83.0.478.58'},
@@ -53,18 +66,15 @@ class BaseSsrnSpider(BaseSpider):
                 dont_filter=True,
                 meta={'collection': response.meta['collection']}
             )
-        try:
-            next_page = response.xpath(
-                "//body//div[@class='results-header']//div[@class='pagination']//li[@class='next']/a/@href").extract()[
-                0]
-            if next_page is not None:
-                yield response.follow(
-                    next_page,
-                    callback=self.parse_query_result,
-                    meta={'collection': response.meta['collection']}
-                )
-        except:
-            pass
+
+        next_page = response.xpath(
+            "//div[@class='pagination']//li[@class='next']/a/@href").extract_first()
+        if next_page is not None and has_new_papers:
+            yield response.follow(
+                next_page,
+                callback=self.parse_query_result,
+                meta={'collection': response.meta['collection']}
+            )
 
     def parse_article(self, response):
         meta = {
@@ -77,7 +87,7 @@ class BaseSsrnSpider(BaseSpider):
 
         # Doi
         paper_id = re.search(r'^https://papers.ssrn.com/sol3/papers.cfm\?abstract_id=(.*)$', meta['Link']).group(1)
-        meta['Doi'] = "http://dx.doi.org/10.2139/ssrn." + paper_id
+        meta['Doi'] = "10.2139/ssrn." + paper_id
 
         # Abstract
         meta['Abstract'] = (response.xpath(
