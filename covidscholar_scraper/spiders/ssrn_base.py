@@ -50,7 +50,7 @@ class BaseSsrnSpider(BaseSpider):
             url = paper.xpath('.//a[contains(@class, "title")]/@href').extract_first()
             url = urljoin(response.request.url, url)
 
-            paper_id = re.search(r'^https?://papers\.ssrn\.com/sol3/papers\.cfm\?abstract_id=(.*)$', url).group(1)
+            paper_id = re.search(r'abstract=(\d+)', url).group(1)
             if self.has_duplicate(
                     'Scraper_papers_ssrn_com',
                     {'Doi': "10.2139/ssrn.%s" % paper_id}):
