@@ -34,10 +34,10 @@ class NBERSpider(BaseSpider):
             url='https://www.nber.org/new.html#latest',
             callback=self.parse_all_links,
         )
-        # yield Request(
-        #     url='https://www.nber.org/new_archive/2020.html',
-        #     callback=self.parse_all_links,
-        # )
+        yield Request(
+            url='https://www.nber.org/new_archive/2020.html',
+            callback=self.parse_all_links,
+        )
 
     def parse_all_links(self, response):
         for url in response.xpath('//a/@href').extract():
