@@ -1,4 +1,6 @@
+import os
 import re
+import signal
 import string
 import sys
 from collections import Counter
@@ -211,6 +213,7 @@ def extract_paragraphs_pdf_timeout(pdf_file, timeout=60, return_dicts=False, onl
         process.join()
         return result
     else:
+        os.kill(process.pid, 9)
         process.terminate()
         raise TimeoutError('PDF extraction timeout')
 
