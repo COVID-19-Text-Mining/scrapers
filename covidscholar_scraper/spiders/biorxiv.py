@@ -13,6 +13,7 @@ class BiorxivSpider(BaseSpider):
     name = 'biorxiv'
     allowed_domains = ['biorxiv.org', 'medrxiv.org']
     json_source = 'https://connect.biorxiv.org/relate/collection_json.php?grp=181'
+    html_source = 'http://connect.biorxiv.org/relate/content/181?page={page}'
 
     # DB specs
     collections_config = {
@@ -58,8 +59,9 @@ class BiorxivSpider(BaseSpider):
         })
 
         yield Request(
-            url=self.json_source,
-            callback=self.handle_article_list)
+            url=self.html_source.format(page=1),
+            callback=self.handle_article_list,
+            meta={'page': 1})
 
     def handle_article_list(self, response):
         site_table = {
@@ -67,35 +69,44 @@ class BiorxivSpider(BaseSpider):
             'biorxiv': self.handle_biorxiv,
         }
 
-        data = json.loads(response.body_as_unicode())
-        for entry in data['rels']:
-            # DOI case insensitive
-            doi = entry['rel_doi'].lower()
-            publish_date = datetime.strptime(entry['rel_date'], '%Y-%m-%d')
+        has_paper = False
+        for entry in response.xpath('//div[contains(@class, "highwire-article-citation")]'):
+            link = entry.xpath('.//a[contains(@class, "highwire-cite-linked-title")]/@href').extract_first().strip()
+            doi = entry.xpath('.//a[contains(@class, "highwire-cite-metadata")]//a/text()').extract_first()
+            if doi is None:
+                doi = '10.1101/' + link.rsplit('/')[-1]
+            doi = doi.strip()
+
+            if 'biorxiv' in link:
+                site = 'biorxiv'
+            elif 'medrxiv' in link:
+                site = 'medrxiv'
+            else:
+                continue
 
             if self.has_duplicate(
                     'Scraper_connect_biorxiv_org',
-                    {'Doi': doi, 'Publication_Date': {'$gte': publish_date}}):
+                    {'Doi': doi}):
                 continue
 
-            if entry['rel_site'] not in site_table:
-                self.logger.log(
-                    logging.CRITICAL,
-                    "Unknown site %s", entry['rel_site'])
-                continue
-
+            has_paper = True
             yield Request(
-                # url='https://doi.org/%s' % doi,
-                url=entry['rel_link'],
+                url=link,
                 dont_filter=True,
-                callback=site_table[entry['rel_site']],
+                callback=site_table[site],
                 # Pass in initial meta data dictionary
                 meta={
                     'Doi': doi,
-                    'Journal': entry['rel_site'],
-                    'Publication_Date': publish_date,
+                    'Journal': site,
                     'Origin': 'COVID-19 SARS-CoV-2 preprints from medRxiv and bioRxiv @ %s' % self.json_source,
                 })
+
+        if has_paper:
+            yield Request(
+                url=self.html_source.format(page=response.meta['page'] + 1),
+                callback=self.handle_article_list,
+                meta={'page': response.meta['page'] + 1}
+            )
 
     def handle_medrxiv_pdf(self, response):
         result = response.meta
@@ -116,6 +127,9 @@ class BiorxivSpider(BaseSpider):
 
         # Scrape title
         result['Title'] = self.get_all_text_html(response.xpath("//*[contains(@id,'page-title')]").extract_first())
+
+        result['Publication_Date'] = datetime.strptime(
+            response.xpath('//meta[@name="DC.Date"]/@content').extract_first(), '%Y-%m-%d')
 
         # Scrape author list
         authors = []
