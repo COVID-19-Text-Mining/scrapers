@@ -97,10 +97,10 @@ class Cord19Spider(BaseSpider):
                 'biorxiv_medrxiv',
                 'https://ai2-semanticscholar-cord-19.s3-us-west-2.amazonaws.com/latest/biorxiv_medrxiv.tar.gz',
                 self.parse_gzip,
-            ), (
-                'metadata',
-                'https://ai2-semanticscholar-cord-19.s3-us-west-2.amazonaws.com/latest/metadata.csv',
-                self.parse_csv,
+            # ), (
+            #     'metadata',
+            #     'https://ai2-semanticscholar-cord-19.s3-us-west-2.amazonaws.com/latest/metadata.csv',
+            #     self.parse_csv,
             ),
         ]
         for content_type, link, method in data_files:

@@ -46,6 +46,8 @@ jobs_registry = {
     'scrapy crawl thelancet': 3600 * 6,
     'scrapy crawl arxiv': 3600 * 12,
     'scrapy crawl socarxiv': 3600 * 6,
+    'scrapy crawl ssrn': 3600 * 12,
+    'scrapy crawl nber': 3600 * 1,
 }
 
 
