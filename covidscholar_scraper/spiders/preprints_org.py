@@ -1,29 +1,21 @@
-import json
 import re
 from datetime import datetime
+from urllib.parse import urljoin
 
 from pymongo import HASHED
-from pytz import UTC
-from scrapy.http import JsonRequest
+from scrapy import Request
 
 from ._base import BaseSpider
 
 
-def parse_date(s):
-    try:
-        return datetime.strptime(s, '%Y-%m-%dT%H:%M:%S.%f%z')
-    except ValueError:
-        return datetime.strptime(s, '%Y-%m-%dT%H:%M:%S%z')
-
-
-class PsyarxivSpider(BaseSpider):
+class PrePrintsOrgSpider(BaseSpider):
     name = 'preprints_org'
 
     # DB specs
     collections_config = {
         'Scraper_preprints_org': [
-            [('doi', HASHED)],
-            'date_updated',
+            [('Doi', HASHED)],
+            'Publication_Date',
         ],
     }
     gridfs_config = {
@@ -36,90 +28,88 @@ class PsyarxivSpider(BaseSpider):
         'line_margin': 2.5
     }
 
-    url = 'https://share.osf.io/api/v2/search/creativeworks/_search?preference=ex3807jvid'
+    url = 'https://www.preprints.org/covid19?order_by=most_recent&page_num={page_num}'
 
-    post_params = {
-        "query": {
-            "bool": {
-                "must": {
-                    "query_string": {"query": "*"}
-                },
-                "filter": [
-                    {"bool": {
-                        "should": [
-                            {"terms": {"types": ["preprint"]}},
-                            {"terms": {"sources": ["Thesis Commons"]}}]}
-                    },
-                    {"bool": {
-                        "should": [
-                            {"match": {"subjects": "bepress|Social and Behavioral Sciences"}},
-                            {"match": {"subjects": "bepress|Law"}},
-                            {"match": {"subjects": "bepress|Arts and Humanities"}}
-                        ]}
-                    },
-                    {"terms": {
-                        "sources": [
-                            "OSF", "AfricArXiv", "AgriXiv", "Arabixiv", "BioHackrXiv", "BodoArXiv",
-                            "EarthArXiv", "EcoEvoRxiv", "ECSarXiv", "EdArXiv", "engrXiv", "FocUS Archive",
-                            "Frenxiv", "INA-Rxiv", "IndiaRxiv", "LawArXiv", "LIS Scholarship Archive", "MarXiv",
-                            "MediArXiv", "MetaArXiv", "MindRxiv", "NutriXiv", "PaleorXiv", "PsyArXiv",
-                            "Research AZ", "SocArXiv", "SportRxiv", "Thesis Commons", "arXiv", "bioRxiv",
-                            "Preprints.org", "PeerJ", "Cogprints", "Research Papers in Economics"
-                        ]}
-                    }
-                ]
-            }
-        },
-        "from": 0,
-        "aggregations": {
-            "sources": {"terms": {"field": "sources", "size": 500}}
-        },
-        "sort": {"date_updated": "desc"}
-    }
+    def build_url(self, page):
+        return self.url.format(page_num=page)
 
     def start_requests(self):
-        params = self.post_params.copy()
-        yield JsonRequest(
-            url=self.url,
-            data=params,
-            callback=self.parse_results_list,
-            meta={'dont_obey_robotstxt': True, 'from': 0}
+        yield Request(
+            url=self.build_url(1),
+            meta={'page': 1},
+            callback=self.parse_results
         )
 
-    def parse_results_list(self, response):
-        data = json.loads(response.body)
-        last_time = datetime.now().replace(tzinfo=UTC)
+    def parse_results(self, response):
+        last_time = datetime.now()
         has_new_paper = False
 
-        for item in data['hits']['hits']:
-            item = item['_source']
-            item.update({
-                'date': parse_date(item['date']),
-                'date_created': parse_date(item['date_created']),
-                'date_modified': parse_date(item['date_modified']),
-                'date_published': parse_date(item['date_published']),
-                'date_updated': parse_date(item['date_updated']),
-            })
-            last_time = min(last_time, item['date_updated'])
+        for item in response.xpath('//div[contains(@class, "search-wrapper")]/div'):
+            doi_parts = item.xpath(
+                './/a[@class="title"]/@href').extract_first().strip().split('/')[-2:]
+            doi = f'10.20944/preprints{".".join(doi_parts)}'
 
-            try:
-                doi = next(x for x in item['identifiers'] if re.match(r'^https?://(?:dx\.)?doi.org/.*$', x))
-            except StopIteration:
-                break
+            article_type = item.xpath(
+                './/span[contains(@class, "content-box-header-element-1")]/text()').extract_first().capitalize()
 
-            item['doi'] = doi
-            if self.has_duplicate(where='Scraper_preprints_org', query={'doi': doi}):
+            title = item.xpath('.//a[@class="title"]').extract_first()
+            title = self.get_all_text_html(title)
+
+            authors = item.xpath('.//a[contains(@class, "author-selector")]/text()').extract()
+            subjects = item.xpath('.//a[contains(@href, "search_subject")]//text()').extract()
+            keywords = item.xpath('.//a[contains(@href, "=keywords")]//text()').extract()
+
+            publication_date = item.xpath(
+                './/div[4]//span[contains(@class, "search-content-header-label")]/text()').extract_first()
+            publication_date = re.search(r'Online: (\d+\s+\w+\s+\d+)', publication_date).group(1)
+            publication_date = datetime.strptime(publication_date, '%d %B %Y')
+
+            abstract = item.xpath('.//div[contains(@class, "abstract-content")]').extract_first()
+            abstract_text = self.get_all_text_html(abstract)
+
+            pdf_link = item.xpath('.//a[contains(@href, "/download")]/@href').extract_first()
+            pdf_link = urljoin(response.request.url, pdf_link)
+
+            item = {
+                'Doi': doi,
+                'ArticleType': article_type,
+                'Title': title,
+                'Authors': authors,
+                'Subjects': subjects,
+                'Keywords': keywords,
+                'Publication_Date': publication_date,
+                'Abstract': abstract_text,
+                'PDF_Link': pdf_link,
+            }
+            last_time = min(last_time, publication_date)
+
+            if self.has_duplicate(where='Scraper_preprints_org', query={'Doi': doi}):
                 continue
 
             has_new_paper = True
-            self.save_article(item, to='Scraper_preprints_org', push_lowercase_to_meta=False)
-
-        if has_new_paper and last_time > datetime(year=2020, month=1, day=1).replace(tzinfo=UTC):
-            params = self.post_params.copy()
-            params['from'] = response.meta['from'] + len(data['hits']['hits'])
-            yield JsonRequest(
-                url=self.url,
-                data=params,
-                callback=self.parse_results_list,
-                meta={'dont_obey_robotstxt': True, 'from': params['from']}
+            yield Request(
+                url=pdf_link,
+                callback=self.handle_pdf,
+                meta=item
             )
+
+        if has_new_paper and last_time > datetime(year=2020, month=1, day=1):
+            page = response.meta['page'] + 1
+            yield Request(
+                url=self.build_url(page),
+                meta={'page': page},
+                callback=self.parse_results
+            )
+
+    def handle_pdf(self, response):
+        result = response.meta
+
+        file_id = self.save_pdf(
+            pdf_bytes=response.body,
+            pdf_fn=result['Doi'].replace('/', '-') + '.pdf',
+            pdf_link=result['PDF_Link'],
+            fs='Scraper_preprints_org_fs')
+
+        result['PDF_gridfs_id'] = file_id
+
+        self.save_article(result, 'Scraper_preprints_org')
