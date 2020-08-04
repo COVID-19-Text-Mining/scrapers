@@ -84,7 +84,7 @@ class ChemrxivSpider(BaseSpider):
             'types': '',
             'itemTypes': '',
             'licenses': '',
-            'orderBy': 'relevant',
+            'orderBy': 'published_date',
             'orderType': 'desc',
             'limit': 40,
             'search': self.keyword,
