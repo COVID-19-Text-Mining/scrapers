@@ -115,6 +115,8 @@ class OsfOrgSpider(BaseSpider):
                 break
 
             item['doi'] = doi
+            item['osf_id'] = item['id']
+            del item['id']
             if self.has_duplicate(where='Scraper_osf_org', query={'doi': doi}):
                 continue
 
