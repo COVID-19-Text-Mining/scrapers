@@ -88,7 +88,7 @@ class OsfOrgSpider(BaseSpider):
 
     def parse_results_list(self, response):
         data = json.loads(response.body)
-        last_time = datetime.now().replace(tzinfo=UTC)
+        last_time = datetime.now()
         has_new_paper = False
 
         for item in data['hits']['hits']:
@@ -123,7 +123,7 @@ class OsfOrgSpider(BaseSpider):
             has_new_paper = True
             self.save_article(item, to='Scraper_osf_org', push_lowercase_to_meta=False)
 
-        if has_new_paper and last_time > datetime(year=2020, month=1, day=1).replace(tzinfo=UTC):
+        if has_new_paper and last_time > datetime(year=2020, month=1, day=1):
             params = self.post_params.copy()
             params['from'] = response.meta['from'] + len(data['hits']['hits'])
             yield JsonRequest(
