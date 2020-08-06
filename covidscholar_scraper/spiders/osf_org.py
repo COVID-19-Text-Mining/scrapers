@@ -11,7 +11,7 @@ from ._base import BaseSpider
 
 def parse_date(s):
     try:
-        return datetime.strptime(s, '%Y-%m-%dT%H:%M:%S.%f%z')
+        return datetime.strptime(s[:19], '%Y-%m-%dT%H:%M:%S')
     except ValueError:
         return datetime.strptime(s, '%Y-%m-%dT%H:%M:%S%z')
 
