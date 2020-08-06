@@ -6,6 +6,7 @@ import zipfile
 
 import dateutil.parser
 from PyPDF2.pdf import PdfFileReader, PdfFileWriter
+from PyPDF2.utils import PdfReadError
 from pymongo import HASHED
 from scrapy import Request
 
@@ -39,7 +40,12 @@ def extract_zip_as_single_pdf(zip_data):
     pdf_stream = []
     for name in z.namelist():
         if name.lower().endswith('.pdf'):
-            pdf_stream.append(io.BytesIO(z.open(name).read()))
+            try:
+                pdf_stream.append(io.BytesIO(z.open(name).read()))
+            except PdfReadError:
+                pass
+    if not pdf_stream:
+        return None
 
     combined = io.BytesIO()
     pdf_cat(pdf_stream, combined)

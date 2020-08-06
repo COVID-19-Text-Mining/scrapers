@@ -3,7 +3,6 @@ import re
 from datetime import datetime
 
 from pymongo import HASHED
-from pytz import UTC
 from scrapy.http import JsonRequest
 
 from ._base import BaseSpider
