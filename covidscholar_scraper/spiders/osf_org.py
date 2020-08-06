@@ -103,16 +103,23 @@ class OsfOrgSpider(BaseSpider):
             last_time = min(last_time, item['date_updated'])
 
             try:
-                doi = next(x for x in item['identifiers'] if re.match(r'^https?://(?:dx\.)?doi.org/.*$', x))
+                doi = None
+                for x in item['identifiers']:
+                    m = re.match(r'^https?://(?:dx\.)?doi.org/(.*)$', x)
+                    if m:
+                        doi = m.group(1)
+                        break
+                if not doi:
+                    raise StopIteration
             except StopIteration:
                 break
 
             item['doi'] = doi
-            if self.has_duplicate(where='Scraper_preprints_org', query={'doi': doi}):
+            if self.has_duplicate(where='Scraper_osf_org', query={'doi': doi}):
                 continue
 
             has_new_paper = True
-            self.save_article(item, to='Scraper_preprints_org', push_lowercase_to_meta=False)
+            self.save_article(item, to='Scraper_osf_org', push_lowercase_to_meta=False)
 
         if has_new_paper and last_time > datetime(year=2020, month=1, day=1).replace(tzinfo=UTC):
             params = self.post_params.copy()
