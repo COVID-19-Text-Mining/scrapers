@@ -40,15 +40,16 @@ def extract_zip_as_single_pdf(zip_data):
     pdf_stream = []
     for name in z.namelist():
         if name.lower().endswith('.pdf'):
-            try:
-                pdf_stream.append(io.BytesIO(z.open(name).read()))
-            except PdfReadError:
-                pass
+            pdf_stream.append(io.BytesIO(z.open(name).read()))
     if not pdf_stream:
         return None
 
     combined = io.BytesIO()
-    pdf_cat(pdf_stream, combined)
+    try:
+        pdf_cat(pdf_stream, combined)
+    except PdfReadError:
+        return None
+
     combined.seek(0)
 
     return combined.read()
