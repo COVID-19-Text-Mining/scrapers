@@ -59,6 +59,9 @@ class Cord19Spider(BaseSpider):
         'Scraper_Cord_19': [
             [('paper_id', HASHED)]
         ],
+        'metadata': [
+            [('data', HASHED)]
+        ],
     }
 
     def start_requests(self):
