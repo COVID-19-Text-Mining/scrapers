@@ -63,9 +63,27 @@ class Cord19Spider(BaseSpider):
 
     def start_requests(self):
         today = datetime.now()
-        data_file_path = today.strftime(
+
+        latest_scraped = self.get_col('metadata').find_one({'data': 'scrapers:cord_19_scraped'})
+        if latest_scraped:
+            next_date = datetime(
+                year=latest_scraped['year'],
+                month=latest_scraped['month'],
+                day=latest_scraped['day'] + 1
+            )
+            if next_date > today:
+                return
+        else:
+            next_date = datetime(year=today.year, month=today.month, day=today.day)
+
+        data_file_path = next_date.strftime(
             'https://ai2-semanticscholar-cord-19.s3-us-west-2.amazonaws.com/%Y-%m-%d/document_parses.tar.gz')
 
+        self.get_col('metadata').update_one(
+            {'data': 'scrapers:cord_19_scraped'},
+            {'$set': {'year': next_date.year, 'month': next_date.month, 'day': next_date.day}},
+            upsert=True
+        )
         yield Request(
             url=data_file_path,
             callback=self.parse_gzip,
