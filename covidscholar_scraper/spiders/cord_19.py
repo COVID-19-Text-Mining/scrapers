@@ -4,6 +4,7 @@ import json
 import re
 import tarfile
 import time
+from datetime import datetime
 
 import numpy as np
 import pandas as pd
@@ -55,72 +56,29 @@ class Cord19Spider(BaseSpider):
 
     # DB specs
     collections_config = {
-        'CORD_comm_use_subset': [
+        'Scraper_Cord_19': [
             [('paper_id', HASHED)]
         ],
-        'CORD_noncomm_use_subset': [
-            [('paper_id', HASHED)]
-        ],
-        'CORD_biorxiv_medrxiv': [
-            [('paper_id', HASHED)]
-        ],
-        'CORD_custom_license': [
-            [('paper_id', HASHED)]
-        ],
-        'CORD_metadata': [
-            [('cord_uid', HASHED)]
-        ],
-    }
-    subset_collection_map = {
-        'comm_use_subset': 'CORD_comm_use_subset',
-        'noncomm_use_subset': 'CORD_noncomm_use_subset',
-        'biorxiv_medrxiv': 'CORD_biorxiv_medrxiv',
-        'custom_license': 'CORD_custom_license',
-        'metadata': 'CORD_metadata',
     }
 
     def start_requests(self):
-        data_files = [
-            (
-                'comm_use_subset',
-                'https://ai2-semanticscholar-cord-19.s3-us-west-2.amazonaws.com/latest/comm_use_subset.tar.gz',
-                self.parse_gzip,
-            ), (
-                'noncomm_use_subset',
-                'https://ai2-semanticscholar-cord-19.s3-us-west-2.amazonaws.com/latest/noncomm_use_subset.tar.gz',
-                self.parse_gzip,
-            ), (
-                'custom_license',
-                'https://ai2-semanticscholar-cord-19.s3-us-west-2.amazonaws.com/latest/custom_license.tar.gz',
-                self.parse_gzip,
-            ), (
-                'biorxiv_medrxiv',
-                'https://ai2-semanticscholar-cord-19.s3-us-west-2.amazonaws.com/latest/biorxiv_medrxiv.tar.gz',
-                self.parse_gzip,
-            # ), (
-            #     'metadata',
-            #     'https://ai2-semanticscholar-cord-19.s3-us-west-2.amazonaws.com/latest/metadata.csv',
-            #     self.parse_csv,
-            ),
-        ]
-        for content_type, link, method in data_files:
-            yield Request(
-                url=link,
-                callback=method,
-                meta={
-                    'download_maxsize': 0,
-                    'download_warnsize': 0,
-                    'content_type': content_type,
-                },
-                dont_filter=True)
+        today = datetime.now()
+        data_file_path = today.strftime(
+            'https://ai2-semanticscholar-cord-19.s3-us-west-2.amazonaws.com/%Y-%m-%d/document_parses.tar.gz')
+
+        yield Request(
+            url=data_file_path,
+            callback=self.parse_gzip,
+            meta={
+                'download_maxsize': 0,
+                'download_warnsize': 0,
+            },
+            dont_filter=True)
 
     def parse_gzip(self, response):
         fileio = io.BytesIO(response.body)
         gzipfile = gzip.GzipFile(fileobj=fileio, mode='rb')
         archive = tarfile.TarFile(fileobj=gzipfile, mode='r')
-
-        content_type = response.meta['content_type']
-        collection = self.get_col(self.subset_collection_map[content_type])
 
         for file in archive.getmembers():
             path = file.name
@@ -133,19 +91,21 @@ class Cord19Spider(BaseSpider):
             data = json.load(contents)
             paper_id = data['paper_id']
 
-            insert = True
-
-            old_doc = collection.find_one({'paper_id': data['paper_id']})
-            if old_doc is not None:
+            def test_duplicate(old_doc):
                 old_doc = {x: old_doc[x] for x in data}
                 if old_doc == data:
-                    insert = False
+                    return True
 
-            if insert:
-                self.logger.info("Insert paper with id %s", paper_id)
-                self.save_article(article=data, to=collection, push_lowercase_to_meta=False)
-                # Sleep 3 secs to slow down insertion.
-                time.sleep(3)
+            if self.has_duplicate(
+                    'Scraper_Cord_19',
+                    {'paper_id': data['paper_id']},
+                    comparator=test_duplicate):
+                continue
+
+            self.logger.info("Insert paper with id %s", paper_id)
+            self.save_article(article=data, to='Scraper_Cord_19', push_lowercase_to_meta=False)
+            # Sleep 3 secs to slow down insertion.
+            time.sleep(3)
 
     def parse_csv(self, response):
 
