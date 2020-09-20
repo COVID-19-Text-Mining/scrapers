@@ -40,7 +40,7 @@ jobs_registry = {
     'scrapy crawl biorxiv': 3600,
     'scrapy crawl cord_19': 3600 * 12,
     'scrapy crawl chemrxiv': 3600,
-    'scrapy crawl publichealthontario': 3600,
+    # 'scrapy crawl publichealthontario': 3600,
     'scrapy crawl elsevier_corona': 3600,
     'scrapy crawl lens_patent_spider': 3600,
     'scrapy crawl biorxiv_version_tracker': 86400,

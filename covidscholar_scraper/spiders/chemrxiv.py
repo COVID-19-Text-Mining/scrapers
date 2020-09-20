@@ -2,6 +2,7 @@ import io
 import json
 import re
 import urllib.parse
+import validators
 import zipfile
 
 import dateutil.parser
@@ -192,6 +193,9 @@ class ChemrxivSpider(BaseSpider):
         else:
             article_link = re.findall(r'downloadUrl"\s*:\s*"([^"]+)"', response.text)
             article_link = article_link[0] if len(article_link) else None
+
+        if article_link and not validators.url(article_link):
+            article_link = None
 
         if article_link is None:
             # No PDF

@@ -8,4 +8,5 @@ pysftp
 pytz
 scrapy
 sentry_sdk
+validators
 xlrd
