@@ -22,7 +22,7 @@ class BaseSsrnSpider(BaseSpider):
     }
 
     def start_requests(self):
-        collections = ['3526432', '3526433', '3526437']
+        collections = ['3526423']
 
         for collection in collections:
             query_dict = {
@@ -30,8 +30,11 @@ class BaseSsrnSpider(BaseSpider):
                 'journal_id': collection,
                 'orderBy': 'ab_approval_date',
                 'orderDir': 'desc',
+                'strSelectedOption': '6',
+                'lim': 'false',
+                'Network': 'no'
             }
-            url = 'https://papers.ssrn.com/sol3/JELJOUR_Results.cfm?' + urllib.parse.urlencode(query_dict)
+            url = 'https://papers.ssrn.com/sol3/Jeljour_results.cfm?' + urllib.parse.urlencode(query_dict)
 
             yield Request(
                 url=url,
@@ -50,7 +53,7 @@ class BaseSsrnSpider(BaseSpider):
             url = paper.xpath('.//a[contains(@class, "title")]/@href').extract_first()
             url = urljoin(response.request.url, url)
 
-            paper_id = re.search(r'abstract=(\d+)', url).group(1)
+            paper_id = re.search(r'abstract_id=(\d+)', url).group(1)
             if self.has_duplicate(
                     'Scraper_papers_ssrn_com',
                     {'Doi': "10.2139/ssrn.%s" % paper_id}):
