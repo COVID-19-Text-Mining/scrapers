@@ -117,6 +117,7 @@ class ChemrxivSpider(BaseSpider):
                 callback=self.parse_query_result,
                 priority=100
             )
+
         for item in data['items']:
             # Only scrape articles
             if item['type'] != 'article':
