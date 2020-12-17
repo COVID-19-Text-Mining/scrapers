@@ -178,21 +178,17 @@ class ChemrxivSpider(BaseSpider):
         # However maybe use other (bs4) to extract paragraphs.
         meta['Abstract'] = list(filter(
             lambda x: x.strip(),
-            response.xpath('string(//div[contains(@class,"description")])').extract()))
+            response.xpath('//meta[@name="citation_abstract"]/@content').extract()))
         meta['Abstract'] = list(map(
             lambda x: re.sub(r'\s+', ' ', x),
             meta['Abstract']
         ))
         meta['Keywords'] = list(filter(
             lambda x: x.strip(),
-            response.xpath('//div[contains(@class,"tags")]//span/text()').extract()))
+            response.xpath('//meta[@name="citation_keywords"]/@content').extract_first().split('; ')))
 
-        article_link = re.search(r'exportPdfDownloadUrl"\s*:\s*"([^"]+)"', response.text)
-        if article_link is not None:
-            article_link = article_link.group(1)
-        else:
-            article_link = re.findall(r'downloadUrl"\s*:\s*"([^"]+)"', response.text)
-            article_link = article_link[0] if len(article_link) else None
+        article_id = meta['Link'].split('/')[-1]
+        article_link = "https://chemrxiv.org/ndownloader/articles/{}/versions/1/export_pdf".format(article_id)
 
         if article_link and not validators.url(article_link):
             article_link = None
