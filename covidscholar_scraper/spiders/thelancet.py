@@ -38,35 +38,31 @@ class ThelancetSpider(BaseSpider):
 
     def parse(self, response):
         meta = response.meta
-        links = response.xpath('//body//div[@class="articleTitle"]//a/@href').extract()
-        publish_dates = response.xpath('//body//div[@class="published-online"]/text()').extract()
+        links = response.xpath('//body//h2[@class="meta__title"]//a/@href').extract()
 
-        for i in range(0, len(publish_dates)):
-            publish_dates[i] = (re.search(r'^Published:\s(.*)$', publish_dates[i])).group(1)
-
-        titles = [h2.xpath('string(a)').get() for h2 in response.xpath('//body//div[@class="articleTitle"]/h2')]
+        titles = response.xpath('//body//h2[@class="meta__title"]/a/text()').extract()
 
         for article_number in range(0, len(links)):
             if not self.has_duplicate(
                     'Scraper_thelancet_com',
-                    {'Title': titles[article_number], 'Publication_Date': publish_dates[article_number]}):
+                    {'Title': titles[article_number]}):
                 meta['Title'] = titles[article_number]
                 meta['Journal'] = 'thelancet'
                 meta['Origin'] = 'All coronavirus articles from thelancet'
-                meta['Publication_Date'] = publish_dates[article_number]
                 meta['Link'] = 'https://www.thelancet.com' + links[article_number]
                 yield Request(
                     url='https://www.thelancet.com' + links[article_number],
                     callback=self.parse_article,
                     meta=meta
                 )
-        next_page = response.xpath('//body//li[@class="next"]/a/@href').get()
+        next_page = response.xpath('//body//a[@class="pagination__btn--next"]/@href').get()
         if next_page is not None:
             yield response.follow(next_page, callback=self.parse, meta={ 'dont_obey_robotstxt': True})
 
     def parse_article(self, response):
         meta = response.meta
-        meta['Doi'] = response.xpath('//body//div[@class="inline-it"]//a/text()').extract_first()
+        meta["Publication_Date"] = response.xpath('//body//span[@class="article-header__publish-date__value"]/text()').extract_first()
+        meta['Doi'] = response.xpath('//body//a[@class="article-header__doi__value"]/text()').extract_first()
         meta['Authors'] = [{'Name': x} for x in response.xpath('//body//li[@class="loa__item author"]/div[@class="dropBlock article-header__info"]/a/text()').extract()]
         meta['Text'] = self.find_text_html(response.text, meta['Title'])
         self.save_article(meta, to='Scraper_thelancet_com')
