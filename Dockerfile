@@ -7,7 +7,7 @@ RUN apk add libstdc++ libgcc libxslt libxml2 openssl libffi
 #RUN apk add --no-cache --virtual .build-deps \
 #   make automake gcc g++ python3-dev linux-headers \
 #   libffi-dev openssl-dev libxml2-dev libxslt-dev
-RUN pip install --upgrade pip
+RUN pip install --upgrade pip==20.2.4
 
 # Cleanup
 #RUN apk del .build-deps
