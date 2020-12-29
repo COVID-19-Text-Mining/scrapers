@@ -36,7 +36,7 @@ jobs_registry = {
     'scrapy crawl zenodo': 3600,
     'scrapy crawl engrxiv': 3600,
     'scrapy crawl retraction_database': 3600 * 6,
-    'scrapy crawl chictr': 3600 * 12,
+    # 'scrapy crawl chictr': 3600 * 12,
     'scrapy crawl biorxiv': 3600,
     'scrapy crawl cord_19': 3600 * 12,
     'scrapy crawl chemrxiv': 3600,

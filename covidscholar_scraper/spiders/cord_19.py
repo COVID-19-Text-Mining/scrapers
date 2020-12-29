@@ -4,7 +4,7 @@ import json
 import re
 import tarfile
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import numpy as np
 import pandas as pd
@@ -72,8 +72,8 @@ class Cord19Spider(BaseSpider):
             next_date = datetime(
                 year=latest_scraped['year'],
                 month=latest_scraped['month'],
-                day=latest_scraped['day'] + 1
-            )
+                day=latest_scraped['day']
+            ) + timedelta(days=1)
             if next_date > today:
                 return
         else:
