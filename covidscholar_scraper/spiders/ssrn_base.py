@@ -101,7 +101,17 @@ class BaseSsrnSpider(BaseSpider):
             "//body//div[@class='box-container box-abstract-main']/p[@class='note note-list']/span/text()").extract()
         r_date = re.compile(r'^Posted:.*$')
         date = list(filter(r_date.match, date))[0]
-        meta['Publication_Date'] = datetime.strptime(re.search(r'^Posted:\s(.*)$', date).group(1), '%d %b %Y')
+
+        meta['Publication_Date'] = None
+        time_s = re.search(r'^Posted:\s(.*)$', date).group(1)
+        if time_s.strip():
+            meta['Publication_Date'] = datetime.strptime(time_s, '%d %b %Y')
+        if meta['Publication_Date'] is None:
+            meta_pub_date = response.xpath('//meta[@name="citation_publication_date"]/@content').extract_first()
+            if meta_pub_date:
+                meta['Publication_Date'] = datetime.strptime(meta_pub_date, '%Y/%m/%d')
+
+        assert meta['Publication_Date'] is not None
 
         # Authors
         authors = response.xpath(
