@@ -1,3 +1,4 @@
+import json
 import re
 from datetime import datetime
 
@@ -31,45 +32,56 @@ class NBERSpider(BaseSpider):
 
     def start_requests(self):
         yield Request(
-            url='https://www.nber.org/new.html#latest',
+            url='https://www.nber.org/api/v1/working_page_listing/'
+                'contentType/working_paper/_/_/search?page=1&perPage=50&sortBy=public_date',
             callback=self.parse_all_links,
-        )
-        yield Request(
-            url='https://www.nber.org/new_archive/2020.html',
-            callback=self.parse_all_links,
+            meta={'page': 1}
         )
 
     def parse_all_links(self, response):
-        for url in response.xpath('//a/@href').extract():
-            m = re.match(r'^https?://www\.nber\.org/papers/([a-zA-Z0-9]+)$', url)
+        data = json.loads(response.body)
+        has_dup = False
+        for result in data['results']:
+            m = re.match(r'/papers/(.+)$', result['url'])
             if not m:
                 continue
 
             article_number = m.group(1)
+            url = f'https://www.nber.org{result["url"]}'
             if not self.has_duplicate(
                     'Scraper_nber_org',
                     {'NBER_Article_Number': article_number}):
                 yield Request(
                     url=url,
                     callback=self.parse_page,
+                    meta={'article_number': article_number}
                 )
+            else:
+                has_dup = True
+        if not has_dup:
+            page = response.meta['page']
+            yield Request(
+                url=f'https://www.nber.org/api/v1/working_page_listing/'
+                    f'contentType/working_paper/_/_/search?page={page + 1}&perPage=50&sortBy=public_date',
+                callback=self.parse_all_links,
+                meta={'page': page + 1}
+            )
 
     def parse_page(self, response):
         title = response.xpath(
-            '//h1[contains(@class, "title")]/text()').extract_first().strip()
+            '//h1[contains(@class, "page-header__title")]/span/text()').extract_first().strip()
         authors = list(map(
             str.strip,
-            response.xpath('//h2[contains(@class, "citation_author")]//a/text()').extract()))
-        abstract = response.xpath(
-            '//p[@style="margin-left: 40px; margin-right: 40px; text-align: justify"]/text()').extract_first().strip()
-        article_number = response.xpath(
-            '//meta[@name="citation_technical_report_number"]/@content').extract_first().strip()
+            response.xpath('//div[contains(@class, "page-header__authors")]//a/text()').extract()))
+        abstract = ' '.join(map(str.strip, filter(lambda x: x is not None, response.xpath(
+            '//div[contains(@class, "page-header__intro")]//p/text()').extract())))
+        doi = response.xpath(
+            '//meta[@name="citation_doi"]/@content').extract_first().strip()
         pub_date = response.xpath(
             '//meta[@name="citation_publication_date"]/@content').extract_first().strip()
         pub_date = datetime.strptime(pub_date, '%Y/%m/%d')
 
-        doi = f'10.3386/{article_number}'
-
+        article_number = response.meta['article_number']
         data = {
             'NBER_Article_Number': article_number,
             'Doi': doi,
@@ -83,12 +95,13 @@ class NBERSpider(BaseSpider):
         if not self.has_duplicate(
                 'Scraper_nber_org',
                 {'NBER_Article_Number': article_number}):
-            yield Request(
-                url=f'https://www.nber.org/papers/{article_number}.pdf',
-                priority=100,
-                callback=self.handle_pdf,
-                meta={'Data': data}
-            )
+            self.save_article(data, to='Scraper_nber_org')
+            # yield Request(
+            #     url=f'https://www.nber.org/papers/{article_number}.pdf',
+            #     priority=100,
+            #     callback=self.handle_pdf,
+            #     meta={'Data': data}
+            # )
 
     def handle_pdf(self, response):
         data = response.meta['Data']
