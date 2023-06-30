@@ -3,7 +3,7 @@ pandas==1.0.3
 pdfminer==20191125
 python-dateutil
 pymongo==3.10.1
-PyPDF2==1.26.0
+PyPDF2==1.27.9
 pysftp==0.2.9
 pytz
 scrapy
